@@ -131,7 +131,7 @@ fn main() -> Result<(), String> {
         None => Box::new(BufReader::new(io::stdin())),
     };
 
-    let mut _writer: Box<dyn Write> = match args.output {
+    let mut writer: Box<dyn Write> = match args.output {
         Some(filename) => Box::new(BufWriter::new(fs::File::create(filename).map_err(|e| e.to_string())?)),
         None => Box::new(BufWriter::new(io::stdout())),
     };
@@ -218,8 +218,7 @@ fn main() -> Result<(), String> {
     };
 
     let rendered = template.render("module", &module).map_err(|e| e.to_string())?;
-    println!("{}\n", rendered);
+    write!(writer, "{}\n", rendered).map_err(|e| e.to_string())?;
 
     Ok(())
 }
-

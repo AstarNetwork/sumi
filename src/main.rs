@@ -37,8 +37,7 @@ const EVM_ID: u8 = {evm_id};
 #[ink::contract(env = xvm_environment::XvmDefaultEnvironment)]
 mod {name} \{
     // Selector constants
-{{ for function in functions }}
-    const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
+{{ for function in functions }}    const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
 {{ endfor }}
 
     use ethabi::\{
@@ -93,19 +92,13 @@ mod {name} \{
 }
 "#;
 
-#[derive(Serialize)]
-struct Selector {
-    name: String,
-    hash: String,
-}
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 struct ModuleContext {
     name: String,
-    selectors: Vec<Selector>,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 struct Input {
     name: String,
     meta_type: String,
@@ -114,21 +107,18 @@ struct Input {
     token_type: String,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 struct Function {
     name: String,
     inputs: Vec<Input>,
     output: String,
-    selector: String,
     selector_hash: String,
-    input_tokens: String,
 }
 
 #[derive(Serialize)]
 struct Module {
     name: String,
     evm_id: String,
-    selectors: Vec<Selector>,
     functions: Vec<Function>,
 }
 
@@ -205,7 +195,6 @@ fn main() -> Result<(), String> {
                     evm_type: evm_type.to_string(),
                     ink_type: ink_type.to_string(),
                     token_type: token_type.to_string(),
-                    ..Default::default()
                 }
             }).collect();
 
@@ -217,20 +206,13 @@ fn main() -> Result<(), String> {
                 inputs,
                 output: "bool".to_owned(),
                 selector_hash: "TODO".to_owned(),
-                ..Default::default()
             }
         })
         .collect();
 
-    let selectors = functions.iter().map(|function| Selector {
-        name: function.name.clone(), //.to_uppercase(),
-        hash: "todo".to_owned() 
-    }).collect();
-
     let module = Module {
         name: args.module_name,
         evm_id: args.evm_id,
-        selectors,
         functions,
     };
 

@@ -1,4 +1,4 @@
-use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap, fmt::Formatter, ascii::AsciiExt};
+use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
 use serde::Serialize;
 
 use tinytemplate::TinyTemplate;

@@ -93,12 +93,6 @@ mod {name} \{
 }
 "#;
 
-
-#[derive(Serialize)]
-struct ModuleContext {
-    name: String,
-}
-
 #[derive(Serialize)]
 struct Input {
     name: String,

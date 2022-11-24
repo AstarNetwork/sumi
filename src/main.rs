@@ -53,21 +53,21 @@ mod {name} \{
 
     #[ink(storage)]
     pub struct {name | capitalize} \{
-        evm_address: [u8; 20],
+        evm_address: H160,
     }
 
     impl {name | capitalize} \{
         /// Create new abstraction from given contract address.
         #[ink(constructor)]
-        pub fn new(evm_address: [u8; 20]) -> Self \{
+        pub fn new(evm_address: H160) -> Self \{
             Self \{ evm_address }
         }
 
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
         #[ink(message)]
-        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.ink_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
-            let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}.into(){{ if not @last }}, {{ endif }}{{ endfor }});
+        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.evm_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
+            let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
             self.env()
                 .extension()
                 .xvm_call(

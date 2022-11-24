@@ -1,9 +1,12 @@
 use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
+use hex::ToHex;
 use serde::Serialize;
 
 use tinytemplate::TinyTemplate;
 use clap::Parser;
 use convert_case::{Case, Casing};
+use itertools::Itertools;
+use sha3::{Digest, Keccak256};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -37,8 +40,9 @@ const EVM_ID: u8 = {evm_id};
 /// The EVM ERC20 delegation contract.
 #[ink::contract(env = xvm_environment::XvmDefaultEnvironment)]
 mod {name} \{
-    // Selector constants
-{{ for function in functions }}    const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
+{{ for function in functions }}
+    // Selector for `{function.selector}`
+    const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
 {{ endfor }}
 
     use ethabi::\{
@@ -107,6 +111,7 @@ struct Function {
     name: String,
     inputs: Vec<Input>,
     output: String,
+    selector: String,
     selector_hash: String,
 }
 
@@ -179,6 +184,8 @@ fn main() -> Result<(), String> {
         .filter(|item| item["stateMutability"] != "view" )
         .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
         .map(|function| {
+            let name = function["name"].to_string();
+
             let inputs: Vec<_> = function["inputs"].members().map(|m| {
                 let (meta_type, (evm_type, ink_type, token_type)) = type_map
                     .get_key_value(m["type"].as_str().unwrap())
@@ -195,12 +202,22 @@ fn main() -> Result<(), String> {
 
             // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
 
-            let name = function["name"].to_string();
+            let selector = format!("{name}({args})",
+                name = name,
+                args = inputs.iter().map(|input| input.meta_type.as_str()).join(","),
+            );
+
+            let mut hasher = Keccak256::new();
+            hasher.update(selector.as_bytes());
+            let selector_hash: &[u8] = &hasher.finalize();
+            let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
+
             Function {
                 name,
                 inputs,
                 output: "bool".to_owned(),
-                selector_hash: "TODO".to_owned(),
+                selector,
+                selector_hash: selector_hash.encode_hex(),
             }
         })
         .collect();

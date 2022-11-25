@@ -1,5 +1,5 @@
 use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
-use ethabi::ethereum_types::H160;
+use ethabi::ParamType;
 use hex::ToHex;
 use serde::Serialize;
 
@@ -71,7 +71,7 @@ mod {name} \{
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
         #[ink(message)]
-        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.evm_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
+        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.meta_type | convert_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
             let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
             self.env()
                 .extension()
@@ -83,7 +83,7 @@ mod {name} \{
                 .is_ok()
         }
 
-        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.evm_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
+        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.meta_type | convert_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
             let mut encoded = {function.name | upper_snake}_SELECTOR.to_vec();
             let input = [
                 {{ for input in function.inputs }}{input.name}.tokenize(){{ if not @last }},
@@ -164,6 +164,19 @@ struct Module {
     functions: Vec<Function>,
 }
 
+fn convert_type(ty: &ParamType) -> String {
+    match ty {
+        ParamType::Bool => "bool".to_owned(),
+        ParamType::Address => "H160".to_owned(),
+        ParamType::Array(inner) => format!("Vec<{}>", convert_type(inner)),
+        ParamType::FixedArray(inner, size) => format!("[{}; {}]", convert_type(inner), size),
+        ParamType::Tuple(inner) => format!("({})", inner.iter().map(convert_type).join(", ")),
+        ParamType::Uint(_size) => "U256".to_owned(), // TODO use correct size
+
+        _ => todo!()
+    }
+}
+
 fn main() -> Result<(), String> {
     let args = Args::parse();
 
@@ -207,6 +220,18 @@ fn main() -> Result<(), String> {
         _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
     });
 
+    template.add_formatter("convert_type", |value, buf| match value {
+        serde_json::Value::String(raw_type) => {
+            let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
+            let converted = convert_type(&param_type);
+
+            buf.push_str(&converted);
+            Ok(())
+        },
+
+        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+    });
+
     let type_map = HashMap::from([
         ("bool", ("bool", "bool", "Bool")),
         ("uint64", ("U64", "u64", "Uint")),
@@ -235,7 +260,9 @@ fn main() -> Result<(), String> {
                 let raw_type = m["type"].as_str().unwrap();
 
                 let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
-                dbg!(param_type);
+                let converted = convert_type(&param_type);
+                dbg!(param_type, converted);
+
 
                 let type_name = &type_name_parser.captures(raw_type).unwrap()[1];
                 // dbg!(type_name);
@@ -260,7 +287,7 @@ fn main() -> Result<(), String> {
 
                 Input {
                     name: m["name"].to_string(),
-                    meta_type: meta_type.to_string(),
+                    meta_type: raw_type.to_string(), // meta_type.to_string(),
                     evm_type: evm_type.to_string(),
                     ink_type: ink_type.to_string(),
                     token_type: token_type.to_string(),

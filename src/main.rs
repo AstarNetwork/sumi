@@ -1,4 +1,5 @@
 use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
+use ethabi::ethereum_types::H160;
 use hex::ToHex;
 use serde::Serialize;
 
@@ -85,7 +86,7 @@ mod {name} \{
         fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.evm_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
             let mut encoded = {function.name | upper_snake}_SELECTOR.to_vec();
             let input = [
-                {{ for input in function.inputs }}Token::{input.token_type}({input.name}){{ if not @last }},
+                {{ for input in function.inputs }}{input.name}.tokenize(){{ if not @last }},
                 {{ endif }}{{ endfor }}
             ];
 
@@ -93,6 +94,46 @@ mod {name} \{
             encoded
         }
 {{ endfor }}
+    }
+
+    trait Tokenize \{
+        fn tokenize(&self) -> Token;
+    }
+
+    impl<T: Tokenize> Tokenize for Vec<T> \{
+        fn tokenize(&self) -> Token \{
+            Token::Array(self.iter().map(Tokenize::tokenize).collect())
+        }
+    }
+
+    impl<A: Tokenize, B: Tokenize> Tokenize for (A, B) \{
+        fn tokenize(&self) -> Token \{
+            Token::Tuple(vec![self.0.tokenize(), self.1.tokenize()])
+        }
+    }
+
+    impl Tokenize for H160 \{
+        fn tokenize(&self) -> Token \{
+            Token::Address(*self)
+        }
+    }
+
+    impl Tokenize for U256 \{
+        fn tokenize(&self) -> Token \{
+            Token::Uint(*self)
+        }
+    }
+
+    impl Tokenize for bool \{
+        fn tokenize(&self) -> Token \{
+            Token::Bool(*self)
+        }
+    }
+
+    impl<T: Tokenize, const N: usize> Tokenize for [T; N] \{
+        fn tokenize(&self) -> Token \{
+            Token::FixedArray(self.iter().map(Tokenize::tokenize).collect())
+        }
     }
 }
 "#;
@@ -104,6 +145,7 @@ struct Input {
     evm_type: String,
     ink_type: String,
     token_type: String,
+    // is_array: bool,
 }
 
 #[derive(Serialize)]
@@ -178,22 +220,47 @@ fn main() -> Result<(), String> {
         // ("address[]", ("Vec<H160>", "Array")),
     ]);
 
+    let type_name_parser = regex::Regex::new(r"([a-zA-Z0-9_]+)(\[.+)?").unwrap();
+    // let index_parser = regex::Regex::new(r"\[(\d*)\]").unwrap();
+
     let functions: Vec<_> = parsed
         .members()
         .filter(|item| item["type"] == "function" )
         .filter(|item| item["stateMutability"] != "view" )
         .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
         .map(|function| {
-            let name = function["name"].to_string();
+            let function_name = function["name"].to_string();
 
             let inputs: Vec<_> = function["inputs"].members().map(|m| {
+                let raw_type = m["type"].as_str().unwrap();
+
+                let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
+                dbg!(param_type);
+
+                let type_name = &type_name_parser.captures(raw_type).unwrap()[1];
+                // dbg!(type_name);
+
                 let (meta_type, (evm_type, ink_type, token_type)) = type_map
-                    .get_key_value(m["type"].as_str().unwrap())
+                    .get_key_value(type_name)
                     .expect("unknown input type");
+
+                // let array_dimensions: Vec<Option<usize>> = index_parser
+                //     .captures_iter(raw_type)
+                //     .map(|capture| match &capture[1] {
+                //         "" => None,
+                //         dim => Some(dim.parse().unwrap()),
+                //     })
+                //     .collect();
+
+                // for capture in index_parser.captures_iter(raw_type) {
+                //     dbg!(capture);
+                // }
+
+                // dbg!(array_dimensions);
 
                 Input {
                     name: m["name"].to_string(),
-                    meta_type: meta_type.to_string(), 
+                    meta_type: meta_type.to_string(),
                     evm_type: evm_type.to_string(),
                     ink_type: ink_type.to_string(),
                     token_type: token_type.to_string(),
@@ -203,7 +270,7 @@ fn main() -> Result<(), String> {
             // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
 
             let selector = format!("{name}({args})",
-                name = name,
+                name = function_name,
                 args = inputs.iter().map(|input| input.meta_type.as_str()).join(","),
             );
 
@@ -213,7 +280,7 @@ fn main() -> Result<(), String> {
             let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
 
             Function {
-                name,
+                name: function_name,
                 inputs,
                 output: "bool".to_owned(),
                 selector,

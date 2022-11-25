@@ -1,4 +1,4 @@
-use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
+use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs};
 use ethabi::ParamType;
 use hex::ToHex;
 use serde::Serialize;
@@ -71,7 +71,7 @@ mod {name} \{
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
         #[ink(message)]
-        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.meta_type | convert_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
+        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
             let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
             self.env()
                 .extension()
@@ -83,7 +83,7 @@ mod {name} \{
                 .is_ok()
         }
 
-        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.meta_type | convert_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
+        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
             let mut encoded = {function.name | upper_snake}_SELECTOR.to_vec();
             let input = [
                 {{ for input in function.inputs }}{input.name}.tokenize(){{ if not @last }},
@@ -141,11 +141,12 @@ mod {name} \{
 #[derive(Serialize)]
 struct Input {
     name: String,
-    meta_type: String,
+
+    // Type came from metadata
     evm_type: String,
-    ink_type: String,
-    token_type: String,
-    // is_array: bool,
+
+    // Equivalent type to use in ink! code
+    rust_type: String,
 }
 
 #[derive(Serialize)]
@@ -172,8 +173,10 @@ fn convert_type(ty: &ParamType) -> String {
         ParamType::FixedArray(inner, size) => format!("[{}; {}]", convert_type(inner), size),
         ParamType::Tuple(inner) => format!("({})", inner.iter().map(convert_type).join(", ")),
         ParamType::Uint(_size) => "U256".to_owned(), // TODO use correct size
+        ParamType::FixedBytes(size) => format!("[u8; {}]", size),
+        ParamType::Bytes => "Vec<u8>".to_owned(),
 
-        _ => todo!()
+        _ => todo!("convert_type for {:?}", ty)
     }
 }
 
@@ -232,22 +235,6 @@ fn main() -> Result<(), String> {
         _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
     });
 
-    let type_map = HashMap::from([
-        ("bool", ("bool", "bool", "Bool")),
-        ("uint64", ("U64", "u64", "Uint")),
-        ("uint256", ("U256", "u128", "Uint")),
-        ("address", ("H160", "[u8; 20]", "Address")),
-        ("bytes32", ("H160", "[u8; 32]", "FixedBytes")),
-
-        // ("bool[]", ("Vec<bool>", "Array")),
-        // ("uint64[]",( "Vec<U64>", "Array")),
-        // ("uint256[]", ("Vec<U256>", "Array")),
-        // ("address[]", ("Vec<H160>", "Array")),
-    ]);
-
-    let type_name_parser = regex::Regex::new(r"([a-zA-Z0-9_]+)(\[.+)?").unwrap();
-    // let index_parser = regex::Regex::new(r"\[(\d*)\]").unwrap();
-
     let functions: Vec<_> = parsed
         .members()
         .filter(|item| item["type"] == "function" )
@@ -258,39 +245,13 @@ fn main() -> Result<(), String> {
 
             let inputs: Vec<_> = function["inputs"].members().map(|m| {
                 let raw_type = m["type"].as_str().unwrap();
-
                 let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
                 let converted = convert_type(&param_type);
-                dbg!(param_type, converted);
-
-
-                let type_name = &type_name_parser.captures(raw_type).unwrap()[1];
-                // dbg!(type_name);
-
-                let (meta_type, (evm_type, ink_type, token_type)) = type_map
-                    .get_key_value(type_name)
-                    .expect("unknown input type");
-
-                // let array_dimensions: Vec<Option<usize>> = index_parser
-                //     .captures_iter(raw_type)
-                //     .map(|capture| match &capture[1] {
-                //         "" => None,
-                //         dim => Some(dim.parse().unwrap()),
-                //     })
-                //     .collect();
-
-                // for capture in index_parser.captures_iter(raw_type) {
-                //     dbg!(capture);
-                // }
-
-                // dbg!(array_dimensions);
 
                 Input {
                     name: m["name"].to_string(),
-                    meta_type: raw_type.to_string(), // meta_type.to_string(),
-                    evm_type: evm_type.to_string(),
-                    ink_type: ink_type.to_string(),
-                    token_type: token_type.to_string(),
+                    evm_type: raw_type.to_string(),
+                    rust_type: converted,
                 }
             }).collect();
 
@@ -298,7 +259,7 @@ fn main() -> Result<(), String> {
 
             let selector = format!("{name}({args})",
                 name = function_name,
-                args = inputs.iter().map(|input| input.meta_type.as_str()).join(","),
+                args = inputs.iter().map(|input| input.evm_type.as_str()).join(","),
             );
 
             let mut hasher = Keccak256::new();

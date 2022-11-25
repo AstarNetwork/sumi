@@ -3,7 +3,7 @@ use ethabi::ParamType;
 use hex::ToHex;
 use serde::Serialize;
 
-use tinytemplate::TinyTemplate;
+use tinytemplate::{TinyTemplate, format_unescaped};
 use clap::Parser;
 use convert_case::{Case, Casing};
 use itertools::Itertools;
@@ -71,7 +71,7 @@ mod {name} \{
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
         #[ink(message)]
-        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.rust_type | unescaped}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
+        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
             let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
             self.env()
                 .extension()
@@ -83,7 +83,7 @@ mod {name} \{
                 .is_ok()
         }
 
-        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.rust_type | unescaped}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
+        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
             let mut encoded = {function.name | upper_snake}_SELECTOR.to_vec();
             let input = [
                 {{ for input in function.inputs }}{input.name}.tokenize(){{ if not @last }},
@@ -199,6 +199,8 @@ fn main() -> Result<(), String> {
     let parsed = json::parse(&buf).map_err(|e| e.to_string())?;
 
     let mut template = TinyTemplate::new();
+    template.set_default_formatter(&format_unescaped);
+
     template.add_template("module", MODULE_TEMPLATE).map_err(|e| e.to_string())?;
 
     template.add_formatter("snake", |value, buf| match value {

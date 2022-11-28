@@ -175,11 +175,33 @@ fn convert_type(ty: &ParamType) -> String {
         ParamType::Array(inner) => format!("Vec<{}>", convert_type(inner)),
         ParamType::FixedArray(inner, size) => format!("[{}; {}]", convert_type(inner), size),
         ParamType::Tuple(inner) => format!("({})", inner.iter().map(convert_type).join(", ")),
-        ParamType::Uint(_size) => "U256".to_owned(), // TODO use correct size
         ParamType::FixedBytes(size) => format!("[u8; {}]", size),
         ParamType::Bytes => "Vec<u8>".to_owned(),
 
-        _ => todo!("convert_type for {:?}", ty)
+        // FIXME What about UTF-8 guarantees and compatibility?
+        ParamType::String => "String".to_owned(),
+
+        ParamType::Int(size) => match size {
+            8 => "i8",
+            16 => "i16",
+            32 => "i32",
+            64 => "i64",
+            128 => "i128",
+
+            _ => "I256",
+        }.to_owned(),
+
+        ParamType::Uint(size) => match size {
+            8 => "u8",
+            16 => "u16",
+            32 => "u32",
+            64 => "u64",
+            128 => "u128",
+
+            _ => "U256",
+        }.to_owned(),
+
+        // _ => todo!("convert_type for {:?}", ty)
     }
 }
 

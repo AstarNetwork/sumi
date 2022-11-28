@@ -99,26 +99,28 @@ mod {name} \{
 {{ endfor }}
     }
 
+    // Helper trait used to convert Rust types to their serializable `Token` counterparts.
+    // Should be 100% inlined and therefore should not negatively affect smart contract size.
     trait Tokenize \{
-        fn tokenize(&self) -> Token;
+        fn tokenize(self) -> Token;
     }
 
     impl<T: Tokenize, const N: usize> Tokenize for [T; N] \{
-        fn tokenize(&self) -> Token \{
-            Token::FixedArray(self.iter().map(Tokenize::tokenize).collect())
+        fn tokenize(self) -> Token \{
+            Token::FixedArray(self.into_iter().map(Tokenize::tokenize).collect())
         }
     }
 
     impl<T: Tokenize> Tokenize for Vec<T> \{
-        fn tokenize(&self) -> Token \{
-            Token::Array(self.iter().map(Tokenize::tokenize).collect())
+        fn tokenize(self) -> Token \{
+            Token::Array(self.into_iter().map(Tokenize::tokenize).collect())
         }
     }
 
     macro_rules! tokenize_tuples \{
         ($($i:ident),+) => \{
             impl<$($i: Tokenize,)+> Tokenize for ($($i,)+) \{
-                fn tokenize(&self) -> Token \{
+                fn tokenize(self) -> Token \{
                     #[allow(non_snake_case)]
                     let ($($i,)+) = self;
 
@@ -128,6 +130,7 @@ mod {name} \{
         };
     }
 
+    tokenize_tuples!(A);
     tokenize_tuples!(A, B);
     tokenize_tuples!(A, B, C);
     tokenize_tuples!(A, B, C, D);
@@ -140,8 +143,8 @@ mod {name} \{
         (unsigned: $($t:ty),+) => \{
             $(
                 impl Tokenize for $t \{
-                    fn tokenize(&self) -> Token \{
-                        Token::Uint((*self).into())
+                    fn tokenize(self) -> Token \{
+                        Token::Uint(self.into())
                     }
                 }
             )+
@@ -150,8 +153,8 @@ mod {name} \{
         (signed: $($t:ty),+) => \{
             $(
                 impl Tokenize for $t \{
-                    fn tokenize(&self) -> Token \{
-                        Token::Int((*self).into())
+                    fn tokenize(self) -> Token \{
+                        Token::Int(self.into())
                     }
                 }
             )+
@@ -162,14 +165,20 @@ mod {name} \{
     tokenize_ints!(unsigned: u8, u16, u32, u64, u128, U256);
 
     impl Tokenize for H160 \{
-        fn tokenize(&self) -> Token \{
-            Token::Address(*self)
+        fn tokenize(self) -> Token \{
+            Token::Address(self)
         }
     }
 
     impl Tokenize for bool \{
-        fn tokenize(&self) -> Token \{
-            Token::Bool(*self)
+        fn tokenize(self) -> Token \{
+            Token::Bool(self)
+        }
+    }
+
+    impl Tokenize for String \{
+        fn tokenize(self) -> Token \{
+            Token::String(self)
         }
     }
 }
@@ -211,8 +220,6 @@ fn convert_type(ty: &ParamType) -> String {
         ParamType::Tuple(inner) => format!("({})", inner.iter().map(convert_type).join(", ")),
         ParamType::FixedBytes(size) => format!("[u8; {}]", size),
         ParamType::Bytes => "Vec<u8>".to_owned(),
-
-        // FIXME What about UTF-8 guarantees and compatibility?
         ParamType::String => "String".to_owned(),
 
         ParamType::Int(size) => match size {

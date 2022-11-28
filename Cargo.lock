@@ -598,7 +598,6 @@ dependencies = [
  "hex",
  "itertools",
  "json",
- "regex",
  "serde",
  "serde_json",
  "sha3",

@@ -103,17 +103,63 @@ mod {name} \{
         fn tokenize(&self) -> Token;
     }
 
+    impl<T: Tokenize, const N: usize> Tokenize for [T; N] \{
+        fn tokenize(&self) -> Token \{
+            Token::FixedArray(self.iter().map(Tokenize::tokenize).collect())
+        }
+    }
+
     impl<T: Tokenize> Tokenize for Vec<T> \{
         fn tokenize(&self) -> Token \{
             Token::Array(self.iter().map(Tokenize::tokenize).collect())
         }
     }
 
-    impl<A: Tokenize, B: Tokenize> Tokenize for (A, B) \{
-        fn tokenize(&self) -> Token \{
-            Token::Tuple(vec![self.0.tokenize(), self.1.tokenize()])
-        }
+    macro_rules! tokenize_tuples \{
+        ($($i:ident),+) => \{
+            impl<$($i: Tokenize,)+> Tokenize for ($($i,)+) \{
+                fn tokenize(&self) -> Token \{
+                    #[allow(non_snake_case)]
+                    let ($($i,)+) = self;
+
+                    Token::Tuple(vec![$($i.tokenize(),)+])
+                }
+            }
+        };
     }
+
+    tokenize_tuples!(A, B);
+    tokenize_tuples!(A, B, C);
+    tokenize_tuples!(A, B, C, D);
+    tokenize_tuples!(A, B, C, D, E);
+    tokenize_tuples!(A, B, C, D, E, F);
+    tokenize_tuples!(A, B, C, D, E, F, G);
+    tokenize_tuples!(A, B, C, D, E, F, G, H);
+
+    macro_rules! tokenize_ints \{
+        (unsigned: $($t:ty),+) => \{
+            $(
+                impl Tokenize for $t \{
+                    fn tokenize(&self) -> Token \{
+                        Token::Uint((*self).into())
+                    }
+                }
+            )+
+        };
+
+        (signed: $($t:ty),+) => \{
+            $(
+                impl Tokenize for $t \{
+                    fn tokenize(&self) -> Token \{
+                        Token::Int((*self).into())
+                    }
+                }
+            )+
+        };
+    }
+
+    tokenize_ints!(signed: i8, i16, i32, i64, i128);
+    tokenize_ints!(unsigned: u8, u16, u32, u64, u128, U256);
 
     impl Tokenize for H160 \{
         fn tokenize(&self) -> Token \{
@@ -121,21 +167,9 @@ mod {name} \{
         }
     }
 
-    impl Tokenize for U256 \{
-        fn tokenize(&self) -> Token \{
-            Token::Uint(*self)
-        }
-    }
-
     impl Tokenize for bool \{
         fn tokenize(&self) -> Token \{
             Token::Bool(*self)
-        }
-    }
-
-    impl<T: Tokenize, const N: usize> Tokenize for [T; N] \{
-        fn tokenize(&self) -> Token \{
-            Token::FixedArray(self.iter().map(Tokenize::tokenize).collect())
         }
     }
 }

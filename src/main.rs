@@ -107,6 +107,30 @@ mod {name} \{
     #[derive(Debug, Encode, Decode, TypeInfo)]
     pub struct U256([u8; 32]);
 
+    impl From<[u8; 20]> for H160 \{
+        fn from(other: [u8; 20]) -> Self \{
+            H160(other)
+        }
+    }
+
+    impl Into<ethabi::ethereum_types::H160> for H160 \{
+        fn into(self) -> ethabi::ethereum_types::H160 \{
+            ethabi::ethereum_types::H160::from(self.0)
+        }
+    }
+
+    impl From<[u8; 32]> for U256 \{
+        fn from(other: [u8; 32]) -> Self \{
+            U256(other)
+        }
+    }
+
+    impl Into<ethabi::ethereum_types::U256> for U256 \{
+        fn into(self) -> ethabi::ethereum_types::U256 \{
+            ethabi::ethereum_types::U256::from(self.0)
+        }
+    }
+
     /// Helper trait used to convert Rust types to their serializable `Token` counterparts.
     /// Should be 100% inlined and therefore should not negatively affect smart contract size.
     trait Tokenize \{

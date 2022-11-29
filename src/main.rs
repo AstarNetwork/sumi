@@ -36,6 +36,7 @@ use ink_lang as ink;
 pub use self::{name}::\{
     {name | capitalize},
     {name | capitalize}Ref,
+    FixedBytes,
 };
 
 /// EVM ID from runtime
@@ -99,8 +100,8 @@ mod {name} \{
 {{ endfor }}
     }
 
-    // Helper trait used to convert Rust types to their serializable `Token` counterparts.
-    // Should be 100% inlined and therefore should not negatively affect smart contract size.
+    /// Helper trait used to convert Rust types to their serializable `Token` counterparts.
+    /// Should be 100% inlined and therefore should not negatively affect smart contract size.
     trait Tokenize \{
         fn tokenize(self) -> Token;
     }
@@ -117,7 +118,29 @@ mod {name} \{
         }
     }
 
-    macro_rules! tokenize_tuples \{
+    /// Rust currently lacks specialization, thus overlapping trait implementations are forbidden.
+    /// We use this newtype to provide custom tokenize implementation for byte arrays.
+    pub struct FixedBytes<const N: usize>(pub [u8; N]);
+
+    impl<const N: usize> From<[u8; N]> for FixedBytes<N> \{
+        fn from(other: [u8; N]) -> Self \{
+            FixedBytes(other)
+        }
+    }
+
+    impl<const N: usize> Into<[u8; N]> for FixedBytes<N> \{
+        fn into(self) -> [u8; N] \{
+            self.0
+        }
+    }
+
+    impl<const N: usize> Tokenize for FixedBytes<N> \{
+        fn tokenize(self) -> Token \{
+            Token::FixedBytes(Vec::from(self.0))
+        }
+    }
+
+    macro_rules! tokenize_tuple \{
         ($($i:ident),+) => \{
             impl<$($i: Tokenize,)+> Tokenize for ($($i,)+) \{
                 fn tokenize(self) -> Token \{
@@ -130,14 +153,14 @@ mod {name} \{
         };
     }
 
-    tokenize_tuples!(A);
-    tokenize_tuples!(A, B);
-    tokenize_tuples!(A, B, C);
-    tokenize_tuples!(A, B, C, D);
-    tokenize_tuples!(A, B, C, D, E);
-    tokenize_tuples!(A, B, C, D, E, F);
-    tokenize_tuples!(A, B, C, D, E, F, G);
-    tokenize_tuples!(A, B, C, D, E, F, G, H);
+    tokenize_tuple!(A);
+    tokenize_tuple!(A, B);
+    tokenize_tuple!(A, B, C);
+    tokenize_tuple!(A, B, C, D);
+    tokenize_tuple!(A, B, C, D, E);
+    tokenize_tuple!(A, B, C, D, E, F);
+    tokenize_tuple!(A, B, C, D, E, F, G);
+    tokenize_tuple!(A, B, C, D, E, F, G, H);
 
     macro_rules! tokenize_ints \{
         (unsigned: $($t:ty),+) => \{
@@ -218,7 +241,7 @@ fn convert_type(ty: &ParamType) -> String {
         ParamType::Array(inner) => format!("Vec<{}>", convert_type(inner)),
         ParamType::FixedArray(inner, size) => format!("[{}; {}]", convert_type(inner), size),
         ParamType::Tuple(inner) => format!("({})", inner.iter().map(convert_type).join(", ")),
-        ParamType::FixedBytes(size) => format!("[u8; {}]", size),
+        ParamType::FixedBytes(size) => format!("FixedBytes<{}>", size),
         ParamType::Bytes => "Vec<u8>".to_owned(),
         ParamType::String => "String".to_owned(),
 

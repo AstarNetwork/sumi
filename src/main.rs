@@ -37,6 +37,8 @@ pub use self::{name}::\{
     {name | capitalize},
     {name | capitalize}Ref,
     FixedBytes,
+    H160,
+    U256,
 };
 
 /// EVM ID from runtime
@@ -50,15 +52,12 @@ mod {name} \{
     const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
 {{ endfor }}
 
-    use ethabi::\{
-        ethereum_types::\{
-            H160,
-            U256,
-        },
-        Token,
-    };
+    use ethabi::Token;
     use hex_literal::hex;
     use ink_prelude::vec::Vec;
+    use ink_storage::traits::\{StorageLayout, SpreadLayout};
+    use scale::\{Encode, Decode};
+    use scale_info::TypeInfo;
 
     #[ink(storage)]
     pub struct {name | capitalize} \{
@@ -75,13 +74,13 @@ mod {name} \{
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
         #[ink(message)]
-        pub fn {function.name | snake}({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
+        pub fn {function.name | snake}(&mut self, {{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
             let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
             self.env()
                 .extension()
                 .xvm_call(
                     super::EVM_ID,
-                    Vec::from(self.evm_address.as_ref()),
+                    Vec::from(self.evm_address.0.as_ref()),
                     encoded_input,
                 )
                 .is_ok()
@@ -99,6 +98,14 @@ mod {name} \{
         }
 {{ endfor }}
     }
+
+    /// Custom wrapper to make `H160` scale-encodable
+    #[derive(Debug, Encode, Decode, TypeInfo, StorageLayout, SpreadLayout)]
+    pub struct H160([u8; 20]);
+
+    /// Custom wrapper to make `U256` scale-encodable
+    #[derive(Debug, Encode, Decode, TypeInfo)]
+    pub struct U256([u8; 32]);
 
     /// Helper trait used to convert Rust types to their serializable `Token` counterparts.
     /// Should be 100% inlined and therefore should not negatively affect smart contract size.
@@ -119,7 +126,7 @@ mod {name} \{
     }
 
     /// Rust currently lacks specialization, thus overlapping trait implementations are forbidden.
-    /// We use this newtype to provide custom tokenize implementation for byte arrays.
+    /// We use this newtype wrapper to provide custom tokenize implementation for byte arrays.
     pub struct FixedBytes<const N: usize>(pub [u8; N]);
 
     impl<const N: usize> From<[u8; N]> for FixedBytes<N> \{
@@ -185,11 +192,11 @@ mod {name} \{
     }
 
     tokenize_ints!(signed: i8, i16, i32, i64, i128);
-    tokenize_ints!(unsigned: u8, u16, u32, u64, u128, U256);
+    tokenize_ints!(unsigned: u8, u16, u32, u64, u128);
 
     impl Tokenize for H160 \{
         fn tokenize(self) -> Token \{
-            Token::Address(self)
+            Token::Address(self.0.into())
         }
     }
 
@@ -202,6 +209,12 @@ mod {name} \{
     impl Tokenize for String \{
         fn tokenize(self) -> Token \{
             Token::String(self)
+        }
+    }
+
+    impl Tokenize for U256 \{
+        fn tokenize(self) -> Token \{
+            Token::Uint(ethabi::ethereum_types::U256::from(self.0))
         }
     }
 }

@@ -113,8 +113,8 @@ mod {name} \{
         }
     }
 
-    impl From<ethabi::ethereum_types::H160> for H160 {
-        fn from(other: ethabi::ethereum_types::H160) -> Self {
+    impl From<ethabi::ethereum_types::H160> for H160 \{
+        fn from(other: ethabi::ethereum_types::H160) -> Self \{
             H160(other.to_fixed_bytes())
         }
     }
@@ -313,8 +313,6 @@ fn convert_type(ty: &ParamType) -> String {
 
             _ => "U256",
         }.to_owned(),
-
-        // _ => todo!("convert_type for {:?}", ty)
     }
 }
 

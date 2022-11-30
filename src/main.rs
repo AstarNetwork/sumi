@@ -163,6 +163,7 @@ mod {name} \{
 
     /// Rust currently lacks specialization, thus overlapping trait implementations are forbidden.
     /// We use this newtype wrapper to provide custom tokenize implementation for byte arrays.
+    #[derive(Debug, Encode, Decode, TypeInfo)]
     pub struct FixedBytes<const N: usize>(pub [u8; N]);
 
     impl<const N: usize> From<[u8; N]> for FixedBytes<N> \{

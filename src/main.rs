@@ -113,6 +113,12 @@ mod {name} \{
         }
     }
 
+    impl From<ethabi::ethereum_types::H160> for H160 {
+        fn from(other: ethabi::ethereum_types::H160) -> Self {
+            H160(other.to_fixed_bytes())
+        }
+    }
+
     impl Into<ethabi::ethereum_types::H160> for H160 \{
         fn into(self) -> ethabi::ethereum_types::H160 \{
             ethabi::ethereum_types::H160::from(self.0)
@@ -122,6 +128,12 @@ mod {name} \{
     impl From<[u8; 32]> for U256 \{
         fn from(other: [u8; 32]) -> Self \{
             U256(other)
+        }
+    }
+
+    impl From<ethabi::ethereum_types::U256> for U256 \{
+        fn from(other: ethabi::ethereum_types::U256) -> Self \{
+            U256(other.into())
         }
     }
 

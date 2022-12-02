@@ -66,7 +66,8 @@ mod {module_name} \{
 
 {{ for function in overloaded_functions }}
     /// Arguments for `{function.name}`
-    enum { function.name | upper_camel }Args \{
+    #[derive(Debug, Encode, Decode, TypeInfo)]
+    pub enum { function.name | upper_camel }Args \{
     {{ for variant in function.variants }}
         // Variant for `{variant.selector}`
         V{ @index } \{

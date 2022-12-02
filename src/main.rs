@@ -1,4 +1,4 @@
-use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs};
+use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
 use ethabi::ParamType;
 use hex::ToHex;
 use serde::Serialize;
@@ -33,9 +33,9 @@ static MODULE_TEMPLATE: &'static str = r#"
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use ink_lang as ink;
-pub use self::{name}::\{
-    {name | capitalize},
-    {name | capitalize}Ref,
+pub use self::{module_name}::\{
+    {module_name | capitalize},
+    {module_name | capitalize}Ref,
     FixedBytes,
     H160,
     U256,
@@ -46,7 +46,7 @@ const EVM_ID: u8 = {evm_id};
 
 /// The EVM ERC20 delegation contract.
 #[ink::contract(env = xvm_environment::XvmDefaultEnvironment)]
-mod {name} \{
+mod {module_name} \{
 {{ for function in functions }}
     // Selector for `{function.selector}`
     const {function.name | upper_snake}_SELECTOR: [u8; 4] = hex!["{function.selector_hash}"];
@@ -60,22 +60,69 @@ mod {name} \{
     use scale_info::TypeInfo;
 
     #[ink(storage)]
-    pub struct {name | capitalize} \{
+    pub struct {module_name | capitalize} \{
         evm_address: H160,
     }
 
-    impl {name | capitalize} \{
+    impl {module_name | capitalize} \{
         /// Create new abstraction from given contract address.
         #[ink(constructor)]
         pub fn new(evm_address: H160) -> Self \{
             Self \{ evm_address }
         }
 
+{{ for function in overloaded_functions }}
+    /// Arguments for `{function.name}`
+    enum { function.name | upper_camel }Args \{
+    {{ for variant in function.variants }}
+        /// Variant for `{variant.selector}`
+        { @index | ordinal } \{
+            {{ for inputs in variant.input -}}
+            {input.name}: {input.rust_type},
+            {{ endfor }}
+        },
+    {{ endfor }}
+    }
+
+    /// Send `{function.name}` call to contract
+    #[ink(message)]
+    pub fn {function.name | snake}(&mut self, args: { function.name | upper_camel }Args) -> {function.output} \{
+        let encoded_input = match args \{
+            {{ for variant in function.variants -}}
+            // Variant for `{variant.selector}`
+            args @ { function.name | upper_camel }Args::{ @index | ordinal}\{ .. } => \{
+                let mut encoded_input = Vec::from(hex!["{variant.selector_hash}"]);
+                encoded_input.extend(&ethabi::encode(&[
+                    {{ for input in variant.inputs }} args.{input.name}.tokenize(),{{ endfor }}
+                ]));
+                encoded_input
+            },
+            {{ endfor }}
+        };
+
+        self.env()
+            .extension()
+            .xvm_call(
+                super::EVM_ID,
+                Vec::from(self.evm_address.0.as_ref()),
+                encoded_input,
+            )
+            .is_ok()
+    }
+{{ endfor }}
+
 {{ for function in functions }}
         /// Send `{function.name}` call to contract
-        #[ink(message)]
+        #[ink(message, selector = 0x{function.selector_hash})]
         pub fn {function.name | snake}(&mut self, {{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> {function.output} \{
-            let encoded_input = Self::{function.name | snake}_encode({{ for input in function.inputs }}{input.name}{{ if not @last }}, {{ endif }}{{ endfor }});
+            let mut encoded_input = {function.name | upper_snake}_SELECTOR.to_vec();
+            let input = [
+                {{ for input in function.inputs -}}
+                {input.name}.tokenize(),
+                {{ endfor }}
+            ];
+            encoded_input.extend(&ethabi::encode(&input));
+
             self.env()
                 .extension()
                 .xvm_call(
@@ -84,17 +131,6 @@ mod {name} \{
                     encoded_input,
                 )
                 .is_ok()
-        }
-
-        fn {function.name | snake}_encode({{ for input in function.inputs }}{input.name}: {input.rust_type}{{ if not @last }}, {{ endif }}{{ endfor }}) -> Vec<u8> \{
-            let mut encoded = {function.name | upper_snake}_SELECTOR.to_vec();
-            let input = [
-                {{ for input in function.inputs }}{input.name}.tokenize(){{ if not @last }},
-                {{ endif }}{{ endfor }}
-            ];
-
-            encoded.extend(&ethabi::encode(&input));
-            encoded
         }
 {{ endfor }}
     }
@@ -278,10 +314,26 @@ struct Function {
 }
 
 #[derive(Serialize)]
+struct Variant {
+    inputs: Vec<Input>,
+    output: String,
+    selector: String,
+    selector_hash: String,
+}
+
+#[derive(Serialize)]
+struct OverloadedFunction {
+    name: String,
+    variants: Vec<Variant>,
+}
+
+#[derive(Serialize)]
 struct Module {
+    #[serde(rename = "module_name")]
     name: String,
     evm_id: String,
     functions: Vec<Function>,
+    overloaded_functions: Vec<OverloadedFunction>,
 }
 
 fn convert_type(ty: &ParamType) -> String {
@@ -350,6 +402,11 @@ fn main() -> Result<(), String> {
         _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
     });
 
+    template.add_formatter("upper_camel", |value, buf| match value {
+        serde_json::Value::String(s) => { *buf += &s.to_case(Case::UpperCamel); Ok(()) },
+        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+    });
+
     template.add_formatter("capitalize", |value, buf| match value {
         serde_json::Value::String(s) => {
             let (head, tail) = s.split_at(1);
@@ -359,6 +416,24 @@ fn main() -> Result<(), String> {
 
             Ok(())
         },
+        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+    });
+
+    template.add_formatter("ordinal", |value, buf| match value {
+        serde_json::Value::Number(number) => {
+            let ordinal = match number.as_i64() {
+                Some(0) => "First",
+                Some(1) => "Second",
+                Some(2) => "Thrid",
+                Some(3) => "Fourth",
+                Some(4) => "Fifth",
+
+                x => unimplemented!("invalid ordinal: {:?}", x),
+            };
+
+            Ok(())
+        },
+
         _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
     });
 
@@ -374,51 +449,74 @@ fn main() -> Result<(), String> {
         _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
     });
 
-    let functions: Vec<_> = parsed
+    let mut is_overloaded = HashMap::new();
+
+    for function in parsed
         .members()
         .filter(|item| item["type"] == "function" )
         .filter(|item| item["stateMutability"] != "view" )
         .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
-        .map(|function| {
-            let function_name = function["name"].to_string();
+    {
+        let function_name = function["name"].as_str().unwrap();
 
-            let inputs: Vec<_> = function["inputs"].members().map(|m| {
-                let raw_type = m["type"].as_str().unwrap();
-                let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
-                let converted = convert_type(&param_type);
+        is_overloaded
+            .entry(function_name)
+            .and_modify(|v| *v = true)
+            .or_insert(false);
+    }
 
-                Input {
-                    name: m["name"].to_string(),
-                    evm_type: raw_type.to_string(),
-                    rust_type: converted,
-                }
-            }).collect();
+    let mut overloaded_functions = Vec::new();
+    let mut functions = Vec::new();
 
-            // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
+    for function in parsed
+        .members()
+        .filter(|item| item["type"] == "function" )
+        .filter(|item| item["stateMutability"] != "view" )
+        .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
+    {
+        let function_name = function["name"].to_string();
 
-            let selector = format!("{name}({args})",
-                name = function_name,
-                args = inputs.iter().map(|input| input.evm_type.as_str()).join(","),
-            );
+        let inputs: Vec<_> = function["inputs"].members().map(|m| {
+            let raw_type = m["type"].as_str().unwrap();
+            let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
+            let converted = convert_type(&param_type);
 
-            let mut hasher = Keccak256::new();
-            hasher.update(selector.as_bytes());
-            let selector_hash: &[u8] = &hasher.finalize();
-            let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
+            Input {
+                name: m["name"].to_string(),
+                evm_type: raw_type.to_string(),
+                rust_type: converted,
+            }
+        }).collect();
 
-            Function {
+        // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
+
+        let selector = format!("{name}({args})",
+            name = function_name,
+            args = inputs.iter().map(|input| input.evm_type.as_str()).join(","),
+        );
+
+        let mut hasher = Keccak256::new();
+        hasher.update(selector.as_bytes());
+        let selector_hash: &[u8] = &hasher.finalize();
+        let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
+
+        if is_overloaded[function_name.as_str()] {
+            // overloaded_functions.
+        } else {
+            functions.push(Function {
                 name: function_name,
                 inputs,
                 output: "bool".to_owned(),
                 selector,
                 selector_hash: selector_hash.encode_hex(),
-            }
-        })
-        .collect();
+            });
+        }
+    }
 
     let module = Module {
         name: args.module_name,
         evm_id: args.evm_id,
+        overloaded_functions,
         functions,
     };
 

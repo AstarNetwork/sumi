@@ -64,6 +64,20 @@ mod {module_name} \{
         evm_address: H160,
     }
 
+{{ for function in overloaded_functions }}
+    /// Arguments for `{function.name}`
+    enum { function.name | upper_camel }Args \{
+    {{ for variant in function.variants }}
+        // Variant for `{variant.selector}`
+        V{ @index } \{
+            {{ for input in variant.inputs -}}
+            {input.name}: {input.rust_type},
+            {{ endfor }}
+        },
+    {{ endfor }}
+    }
+{{ endfor }}
+
     impl {module_name | capitalize} \{
         /// Create new abstraction from given contract address.
         #[ink(constructor)]
@@ -72,31 +86,24 @@ mod {module_name} \{
         }
 
 {{ for function in overloaded_functions }}
-    /// Arguments for `{function.name}`
-    enum { function.name | upper_camel }Args \{
-    {{ for variant in function.variants }}
-        /// Variant for `{variant.selector}`
-        { @index | ordinal } \{
-            {{ for inputs in variant.input -}}
-            {input.name}: {input.rust_type},
-            {{ endfor }}
-        },
-    {{ endfor }}
-    }
-
     /// Send `{function.name}` call to contract
     #[ink(message)]
-    pub fn {function.name | snake}(&mut self, args: { function.name | upper_camel }Args) -> {function.output} \{
+    pub fn {function.name | snake}(&mut self, args: { function.name | upper_camel }Args) -> bool \{
         let encoded_input = match args \{
             {{ for variant in function.variants -}}
             // Variant for `{variant.selector}`
-            args @ { function.name | upper_camel }Args::{ @index | ordinal}\{ .. } => \{
-                let mut encoded_input = Vec::from(hex!["{variant.selector_hash}"]);
-                encoded_input.extend(&ethabi::encode(&[
-                    {{ for input in variant.inputs }} args.{input.name}.tokenize(),{{ endfor }}
+            { function.name | upper_camel }Args::V{ @index }\{
+                {{ for input in variant.inputs }}{input.name},
+                {{ endfor }}
+            } => \{
+                let mut buffer = Vec::from(hex!["{variant.selector_hash}"]);
+                buffer.extend(&ethabi::encode(&[
+                    {{ for input in variant.inputs }}{input.name}.tokenize(),
+                    {{ endfor }}
                 ]));
-                encoded_input
-            },
+                buffer
+            },{{ if not @last }}
+            {{ endif }}
             {{ endfor }}
         };
 
@@ -431,6 +438,8 @@ fn main() -> Result<(), String> {
                 x => unimplemented!("invalid ordinal: {:?}", x),
             };
 
+            buf.push_str(ordinal);
+
             Ok(())
         },
 
@@ -465,7 +474,7 @@ fn main() -> Result<(), String> {
             .or_insert(false);
     }
 
-    let mut overloaded_functions = Vec::new();
+    let mut overloaded_functions = Vec::<OverloadedFunction>::new();
     let mut functions = Vec::new();
 
     for function in parsed
@@ -501,12 +510,30 @@ fn main() -> Result<(), String> {
         let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
 
         if is_overloaded[function_name.as_str()] {
-            // overloaded_functions.
+            let function = {
+                if let Some(function) = overloaded_functions.iter_mut().find(|f| f.name == function_name) {
+                    function
+                } else {
+                    overloaded_functions.push(OverloadedFunction { 
+                        name: function_name.clone(),
+                        variants: Vec::new() 
+                    });
+
+                    overloaded_functions.last_mut().unwrap()
+                }
+            };
+
+            function.variants.push(Variant {
+                inputs,
+                output: "bool".to_owned(), // TODO
+                selector,
+                selector_hash: selector_hash.encode_hex()
+            })
         } else {
             functions.push(Function {
                 name: function_name,
                 inputs,
-                output: "bool".to_owned(),
+                output: "bool".to_owned(), // TODO
                 selector,
                 selector_hash: selector_hash.encode_hex(),
             });

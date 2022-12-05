@@ -391,28 +391,28 @@ fn convert_type(ty: &ParamType) -> String {
     }
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let mut reader: Box<dyn BufRead> = match args.input {
-        Some(filename) => Box::new(BufReader::new(fs::File::open(filename).map_err(|e| e.to_string())?)),
+        Some(filename) => Box::new(BufReader::new(fs::File::open(filename)?)),
         None => Box::new(BufReader::new(io::stdin())),
     };
 
     let mut writer: Box<dyn Write> = match args.output {
-        Some(filename) => Box::new(BufWriter::new(fs::File::create(filename).map_err(|e| e.to_string())?)),
+        Some(filename) => Box::new(BufWriter::new(fs::File::create(filename)?)),
         None => Box::new(BufWriter::new(io::stdout())),
     };
 
     let mut buf = String::new();
-    reader.read_to_string(&mut buf).map_err(|e| e.to_string())?;
+    reader.read_to_string(&mut buf)?;
 
-    let parsed = json::parse(&buf).map_err(|e| e.to_string())?;
+    let parsed = json::parse(&buf)?;
 
     let mut template = TinyTemplate::new();
     template.set_default_formatter(&format_unescaped);
 
-    template.add_template("module", MODULE_TEMPLATE).map_err(|e| e.to_string())?;
+    template.add_template("module", MODULE_TEMPLATE)?;
 
     template.add_formatter("snake", |value, buf| match value {
         serde_json::Value::String(s) => { *buf += &s.to_case(Case::Snake); Ok(()) },
@@ -562,8 +562,8 @@ fn main() -> Result<(), String> {
         functions,
     };
 
-    let rendered = template.render("module", &module).map_err(|e| e.to_string())?;
-    write!(writer, "{}\n", rendered).map_err(|e| e.to_string())?;
+    let rendered = template.render("module", &module)?;
+    write!(writer, "{}\n", rendered)?;
 
     Ok(())
 }

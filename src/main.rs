@@ -77,6 +77,20 @@ mod {module_name} \{
         },
     {{ endfor }}
     }
+
+    {{ for variant in function.variants }}
+    /// Helper implementation that can be used to mimic usual way args are passed to a message
+    impl From<( {{- for input in variant.inputs -}} {input.rust_type}, {{ endfor -}})>
+        for { function.name | upper_camel }Args \{
+        fn from(tuple: ({{- for input in variant.inputs -}} {input.rust_type}, {{ endfor -}})) -> Self \{
+            { function.name | upper_camel }Args::V{ @index } \{
+                {{ for input in variant.inputs -}}
+                {input.name}: tuple.{ @index },
+                {{ endfor }}
+            }
+        }
+    }
+    {{ endfor }}
 {{ endfor }}
 
     impl {module_name | capitalize} \{

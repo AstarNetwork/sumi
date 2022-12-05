@@ -158,11 +158,11 @@ mod {module_name} \{
     }
 
     /// Custom wrapper to make `H160` scale-encodable
-    #[derive(Debug, Encode, Decode, TypeInfo, StorageLayout, SpreadLayout)]
+    #[derive(Copy, Clone, Debug, Encode, Decode, TypeInfo, StorageLayout, SpreadLayout)]
     pub struct H160([u8; 20]);
 
     /// Custom wrapper to make `U256` scale-encodable
-    #[derive(Debug, Encode, Decode, TypeInfo)]
+    #[derive(Copy, Clone, Debug, Encode, Decode, TypeInfo)]
     pub struct U256([u8; 32]);
 
     impl From<[u8; 20]> for H160 \{

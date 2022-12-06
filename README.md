@@ -1,4 +1,4 @@
-<img src="media/sumi.png" align="center"/>
+<p align="center"><img src="media/sumi.png"/><br/></p>
 
 Sumi is a binding generator specifically designed for [Astar Network](https://astar.network) ecosystem with XVM in mind. It takes EVM metadata and converts it to an ink! module that can later be used to call into original EVM smart contract.
 

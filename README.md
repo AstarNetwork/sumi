@@ -11,9 +11,12 @@ Please note that Sumi is not a transpiler, it's a binding generator. If you need
 # Quick start guide
 
 1. Install Sumi using `cargo install --git https://github.com/0x7CFE/sumi`
-2. Use Solidity compiler (or Remix IDE if in doubt) to obtain contract metadata: `solc --pretty-json --abi <input>.sol -o .` Don't forget to replace `<input>.sol` with your actual file name.
-3. `solc` should procuce file `<input>.abi` that would contain ABI JSON
-4. Use the ABI file to feed Sumi: `sumi --input <input>.abi --output binding.rs --module-name <my_module>`
+2. Use Solidity compiler (or Remix IDE if in doubt) to obtain contract metadata:  
+`solc --pretty-json --abi <input>.sol -o .`  
+Don't forget to replace `<input>.sol` with your actual file name.  
+3. `solc` should produce file `<input>.abi` that will contain ABI JSON
+4. Use the ABI file to feed Sumi:  
+`sumi --input <input>.abi --output binding.rs --module-name <my_module>`
 
 Sumi can also work in pipeline mode. By default it would read from stdin and write to stdout which can be handy for shell processing:
 

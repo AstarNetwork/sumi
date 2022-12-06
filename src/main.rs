@@ -1,13 +1,19 @@
-use std::{io::{BufReader, self, BufRead, BufWriter, Write}, fs, collections::HashMap};
 use ethabi::ParamType;
 use hex::ToHex;
 use serde::Serialize;
+use std::{
+    collections::HashMap,
+    fs,
+    io::{self, BufRead, BufReader, BufWriter, Write},
+    path::PathBuf,
+};
 
-use tinytemplate::{TinyTemplate, format_unescaped};
 use clap::Parser;
 use convert_case::{Case, Casing};
 use itertools::Itertools;
 use sha3::{Digest, Keccak256};
+use snafu::prelude::*;
+use tinytemplate::{format_unescaped, TinyTemplate};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -377,7 +383,8 @@ fn convert_type(ty: &ParamType) -> String {
             128 => "i128",
 
             _ => "I256",
-        }.to_owned(),
+        }
+        .to_owned(),
 
         ParamType::Uint(size) => match size {
             8 => "u8",
@@ -387,20 +394,34 @@ fn convert_type(ty: &ParamType) -> String {
             128 => "u128",
 
             _ => "U256",
-        }.to_owned(),
+        }
+        .to_owned(),
     }
+}
+
+#[derive(Debug, Snafu)]
+enum Error {
+    #[snafu(display("Unable to open input file {}: {}", path.display(), source))]
+    ReadInput { source: io::Error, path: PathBuf },
+
+    #[snafu(display("Unable to create output file {}: {}", path.display(), source))]
+    WriteOutput { source: io::Error, path: PathBuf },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     let mut reader: Box<dyn BufRead> = match args.input {
-        Some(filename) => Box::new(BufReader::new(fs::File::open(filename)?)),
+        Some(filename) => Box::new(BufReader::new(
+            fs::File::open(filename.clone()).context(ReadInputSnafu { path: filename })?,
+        )),
         None => Box::new(BufReader::new(io::stdin())),
     };
 
     let mut writer: Box<dyn Write> = match args.output {
-        Some(filename) => Box::new(BufWriter::new(fs::File::create(filename)?)),
+        Some(filename) => Box::new(BufWriter::new(
+            fs::File::create(filename.clone()).context(WriteOutputSnafu { path: filename })?,
+        )),
         None => Box::new(BufWriter::new(io::stdout())),
     };
 
@@ -415,18 +436,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     template.add_template("module", MODULE_TEMPLATE)?;
 
     template.add_formatter("snake", |value, buf| match value {
-        serde_json::Value::String(s) => { *buf += &s.to_case(Case::Snake); Ok(()) },
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        serde_json::Value::String(s) => {
+            *buf += &s.to_case(Case::Snake);
+            Ok(())
+        }
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     template.add_formatter("upper_snake", |value, buf| match value {
-        serde_json::Value::String(s) => { *buf += &s.to_case(Case::UpperSnake); Ok(()) },
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        serde_json::Value::String(s) => {
+            *buf += &s.to_case(Case::UpperSnake);
+            Ok(())
+        }
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     template.add_formatter("upper_camel", |value, buf| match value {
-        serde_json::Value::String(s) => { *buf += &s.to_case(Case::UpperCamel); Ok(()) },
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        serde_json::Value::String(s) => {
+            *buf += &s.to_case(Case::UpperCamel);
+            Ok(())
+        }
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     template.add_formatter("capitalize", |value, buf| match value {
@@ -437,8 +473,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             *buf += tail;
 
             Ok(())
-        },
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        }
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     template.add_formatter("ordinal", |value, buf| match value {
@@ -456,9 +494,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             buf.push_str(ordinal);
 
             Ok(())
-        },
+        }
 
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     template.add_formatter("convert_type", |value, buf| match value {
@@ -468,18 +508,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             buf.push_str(&converted);
             Ok(())
-        },
+        }
 
-        _ => Err(tinytemplate::error::Error::GenericError { msg: "string value expected".to_owned() }),
+        _ => Err(tinytemplate::error::Error::GenericError {
+            msg: "string value expected".to_owned(),
+        }),
     });
 
     let mut is_overloaded = HashMap::new();
 
     for function in parsed
         .members()
-        .filter(|item| item["type"] == "function" )
-        .filter(|item| item["stateMutability"] != "view" )
-        .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
+        .filter(|item| item["type"] == "function")
+        .filter(|item| item["stateMutability"] != "view")
+        .filter(|item| {
+            item["outputs"]
+                .members()
+                .all(|output| output["type"] == "bool")
+        })
     {
         let function_name = function["name"].as_str().unwrap();
 
@@ -494,27 +540,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for function in parsed
         .members()
-        .filter(|item| item["type"] == "function" )
-        .filter(|item| item["stateMutability"] != "view" )
-        .filter(|item| item["outputs"].members().all(|output| output["type"] == "bool"))
+        .filter(|item| item["type"] == "function")
+        .filter(|item| item["stateMutability"] != "view")
+        .filter(|item| {
+            item["outputs"]
+                .members()
+                .all(|output| output["type"] == "bool")
+        })
     {
         let function_name = function["name"].to_string();
 
-        let inputs: Vec<_> = function["inputs"].members().map(|m| {
-            let raw_type = m["type"].as_str().unwrap();
-            let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
-            let converted = convert_type(&param_type);
+        let inputs: Vec<_> = function["inputs"]
+            .members()
+            .map(|m| {
+                let raw_type = m["type"].as_str().unwrap();
+                let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
+                let converted = convert_type(&param_type);
 
-            Input {
-                name: m["name"].to_string(),
-                evm_type: raw_type.to_string(),
-                rust_type: converted,
-            }
-        }).collect();
+                Input {
+                    name: m["name"].to_string(),
+                    evm_type: raw_type.to_string(),
+                    rust_type: converted,
+                }
+            })
+            .collect();
 
         // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
 
-        let selector = format!("{name}({args})",
+        let selector = format!(
+            "{name}({args})",
             name = function_name,
             args = inputs.iter().map(|input| input.evm_type.as_str()).join(","),
         );
@@ -526,12 +580,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if is_overloaded[function_name.as_str()] {
             let function = {
-                if let Some(function) = overloaded_functions.iter_mut().find(|f| f.name == function_name) {
+                if let Some(function) = overloaded_functions
+                    .iter_mut()
+                    .find(|f| f.name == function_name)
+                {
                     function
                 } else {
-                    overloaded_functions.push(OverloadedFunction { 
+                    overloaded_functions.push(OverloadedFunction {
                         name: function_name.clone(),
-                        variants: Vec::new() 
+                        variants: Vec::new(),
                     });
 
                     overloaded_functions.last_mut().unwrap()
@@ -542,7 +599,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 inputs,
                 output: "bool".to_owned(), // TODO
                 selector,
-                selector_hash: selector_hash.encode_hex()
+                selector_hash: selector_hash.encode_hex(),
             })
         } else {
             functions.push(Function {

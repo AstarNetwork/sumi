@@ -11,14 +11,14 @@ Please note that Sumi is not a transpiler, it's a binding generator. If you need
 # Quick start guide
 
 1. Install Sumi using `cargo install --git https://github.com/0x7CFE/sumi`
-2. Use Solidity compiler (or Remix IDE if in doubt) to obtain contract metadata:  
+2. Use Solidity compiler (or [Remix IDE](https://remix.ethereum.org) if in doubt) to obtain smart contract metadata:  
 `solc --pretty-json --abi <input>.sol -o .`  
 Don't forget to replace `<input>.sol` with your actual file name.  
-3. `solc` should produce file `<input>.abi` that will contain ABI JSON
+3. `solc` should produce file `<input>.abi` that will contain ABI in JSON format
 4. Use the ABI file to feed Sumi:  
 `sumi --input <input>.abi --output binding.rs --module-name <my_module>`
 
-Sumi can also work in pipeline mode. By default it would read from stdin and write to stdout which can be handy for shell processing:
+Sumi can also work in pipeline mode. By default it will read from stdin and write to stdout which can be handy for shell processing:
 
     cat IERC20_meta.json | jq '.output.abi ' | sumi -m erc20 -e 0x0F | rustfmt > erc20.rs
 
@@ -38,7 +38,7 @@ You can always use `sumi --help` to get the same reference.
 # Current limitations
 
 Due to XVM v2 limitations currently Sumi processes only:
-- functions (events are not processed)
+- functions (events are ignored)
 - returning a single value `(bool)` which is currently ignored
 - altering contract state, so no `view`s
 

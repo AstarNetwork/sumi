@@ -413,14 +413,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut reader: Box<dyn BufRead> = match args.input {
         Some(filename) => Box::new(BufReader::new(
-            fs::File::open(filename.clone()).context(ReadInputSnafu { path: filename })?,
+            fs::File::open(&filename).context(ReadInputSnafu { path: filename })?,
         )),
         None => Box::new(BufReader::new(io::stdin())),
     };
 
     let mut writer: Box<dyn Write> = match args.output {
         Some(filename) => Box::new(BufWriter::new(
-            fs::File::create(filename.clone()).context(WriteOutputSnafu { path: filename })?,
+            fs::File::create(&filename).context(WriteOutputSnafu { path: filename })?,
         )),
         None => Box::new(BufWriter::new(io::stdout())),
     };
@@ -474,28 +474,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Ok(())
         }
-        _ => Err(tinytemplate::error::Error::GenericError {
-            msg: "string value expected".to_owned(),
-        }),
-    });
-
-    template.add_formatter("ordinal", |value, buf| match value {
-        serde_json::Value::Number(number) => {
-            let ordinal = match number.as_i64() {
-                Some(0) => "First",
-                Some(1) => "Second",
-                Some(2) => "Thrid",
-                Some(3) => "Fourth",
-                Some(4) => "Fifth",
-
-                x => unimplemented!("invalid ordinal: {:?}", x),
-            };
-
-            buf.push_str(ordinal);
-
-            Ok(())
-        }
-
         _ => Err(tinytemplate::error::Error::GenericError {
             msg: "string value expected".to_owned(),
         }),

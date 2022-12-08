@@ -1,3 +1,4 @@
+use crate::error::Error;
 use convert_case::{Case, Casing};
 use ethabi::ParamType;
 use hex::ToHex;
@@ -87,11 +88,7 @@ fn convert_type(ty: &ParamType) -> String {
     }
 }
 
-pub fn render(
-    json: json::JsonValue,
-    module_name: &str,
-    evm_id: &str,
-) -> Result<String, tinytemplate::error::Error> {
+pub fn render(json: json::JsonValue, module_name: &str, evm_id: &str) -> Result<String, Error> {
     let mut template = TinyTemplate::new();
 
     template.set_default_formatter(&format_unescaped);
@@ -141,32 +138,21 @@ pub fn render(
         }),
     });
 
-    template.add_formatter("convert_type", |value, buf| match value {
-        serde_json::Value::String(raw_type) => {
-            let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
-            let converted = convert_type(&param_type);
-
-            buf.push_str(&converted);
-            Ok(())
-        }
-
-        _ => Err(tinytemplate::error::Error::GenericError {
-            msg: "string value expected".to_owned(),
-        }),
-    });
-
     let mut is_overloaded = HashMap::new();
-    for function in json
+    for (index, function) in json
         .members()
-        .filter(|item| item["type"] == "function")
-        .filter(|item| item["stateMutability"] != "view")
-        .filter(|item| {
+        .enumerate()
+        .filter(|(_, item)| item["type"] == "function")
+        .filter(|(_, item)| item["stateMutability"] != "view")
+        .filter(|(_, item)| {
             item["outputs"]
                 .members()
                 .all(|output| output["type"] == "bool")
         })
     {
-        let function_name = function["name"].as_str().unwrap();
+        let function_name = function["name"].as_str().ok_or_else(|| {
+            Error::Metadata(format!("'name' for ABI item {index} not exists or is not a string"))
+        })?;
 
         is_overloaded
             .entry(function_name)
@@ -177,47 +163,59 @@ pub fn render(
     let mut overloaded_functions = Vec::<OverloadedFunction>::new();
     let mut functions = Vec::new();
 
-    for function in json
+    for (index, function) in json
         .members()
-        .filter(|item| item["type"] == "function")
-        .filter(|item| item["stateMutability"] != "view")
-        .filter(|item| {
+        .enumerate()
+        .filter(|(_, item)| item["type"] == "function")
+        .filter(|(_, item)| item["stateMutability"] != "view")
+        .filter(|(_, item)| {
             item["outputs"]
                 .members()
                 .all(|output| output["type"] == "bool")
         })
     {
-        let function_name = function["name"].to_string();
+        let function_name = function["name"].as_str().ok_or_else(|| {
+            Error::Metadata(format!("'name' for ABI item {index} not exists or is not a string"))
+        })?;
 
-        let inputs: Vec<_> = function["inputs"]
+        let inputs = function["inputs"]
             .members()
-            .map(|m| {
-                let raw_type = m["type"].as_str().unwrap();
-                let param_type = ethabi::param_type::Reader::read(raw_type).unwrap();
+            .enumerate()
+            .map(|(index, input)| {
+                let name = input["name"].as_str().ok_or_else(|| {
+                    Error::Metadata(format!("invalid 'name' input parameter {index} of function {function_name}"))
+                })?;
+
+                let raw_type = input["type"].as_str().ok_or_else(|| {
+                    Error::Metadata(format!("invalid 'type' in input parameter item {name} ({index}) of function {function_name}"))
+                })?;
+
+                let param_type = ethabi::param_type::Reader::read(raw_type)?;
                 let converted = convert_type(&param_type);
 
-                Input {
-                    name: m["name"].to_string(),
-                    evm_type: raw_type.to_string(),
+                Ok(Input {
+                    name: name.to_owned(),
+                    evm_type: raw_type.to_owned(),
                     rust_type: converted,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<Input>, Error>>()?;
 
         // let outputs: String = function["outputs"].members().map(|m| format!("{}: {}, ", m["name"], m["type"])).collect();
 
         let selector = format!(
-            "{name}({args})",
-            name = function_name,
+            "{function_name}({args})",
             args = inputs.iter().map(|input| input.evm_type.as_str()).join(","),
         );
 
         let mut hasher = Keccak256::new();
         hasher.update(selector.as_bytes());
         let selector_hash: &[u8] = &hasher.finalize();
-        let selector_hash: [u8; 4] = selector_hash[0..=3].try_into().unwrap();
+        let selector_hash: [u8; 4] = selector_hash[0..=3]
+            .try_into()
+            .expect("Keccac256 hash should contain at least 4 bytes");
 
-        if is_overloaded[function_name.as_str()] {
+        if is_overloaded[function_name] {
             let function = {
                 if let Some(function) = overloaded_functions
                     .iter_mut()
@@ -226,11 +224,13 @@ pub fn render(
                     function
                 } else {
                     overloaded_functions.push(OverloadedFunction {
-                        name: function_name.clone(),
+                        name: function_name.to_owned(),
                         variants: Vec::new(),
                     });
 
-                    overloaded_functions.last_mut().unwrap()
+                    overloaded_functions
+                        .last_mut()
+                        .expect("we've just pushed an item; cannot fail")
                 }
             };
 
@@ -242,7 +242,7 @@ pub fn render(
             })
         } else {
             functions.push(Function {
-                name: function_name,
+                name: function_name.to_owned(),
                 inputs,
                 output: "bool".to_owned(), // TODO
                 selector,

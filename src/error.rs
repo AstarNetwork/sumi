@@ -1,12 +1,29 @@
-use snafu::Snafu;
 use std::{io, path::PathBuf};
 
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[snafu(display("Unable to open input file {}: {}", path.display(), source))]
-    ReadInput { source: io::Error, path: PathBuf },
+    #[error("unable to open input file {path}: {inner}")]
+    ReadInput { path: PathBuf, inner: io::Error },
 
-    #[snafu(display("Unable to create output file {}: {}", path.display(), source))]
-    WriteOutput { source: io::Error, path: PathBuf },
+    #[error("unable to create output file {path}: {inner}")]
+    WriteOutput { path: PathBuf, inner: io::Error },
+
+    #[error(transparent)]
+    Clap(#[from] clap::Error),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error("unable to parse input JSON")]
+    Json(#[from] json::Error),
+
+    #[error("template engine error")]
+    // #[error(transparent)]
+    TemplateEngine(#[from] tinytemplate::error::Error),
+
+    #[error("ethereum ABI error")]
+    EthereumABI(#[from] ethabi::Error),
+
+    #[error("metadata error: {0}")]
+    Metadata(String),
 }

@@ -1,14 +1,15 @@
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 pub struct Args {
     /// Input filename or stdin if empty
     #[arg(long, short)]
-    pub input: Option<String>,
+    pub input: Option<PathBuf>,
 
     /// Output filename or stdout if empty
     #[arg(long, short)]
-    pub output: Option<String>,
+    pub output: Option<PathBuf>,
 
     /// Ink module name to generate
     #[arg(long, short)]

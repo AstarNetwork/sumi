@@ -94,9 +94,9 @@ pub fn render(json: json::JsonValue, module_name: &str, evm_id: &str) -> Result<
     template.set_default_formatter(&format_unescaped);
     template.add_template("module", MODULE_TEMPLATE)?;
 
-    template.add_formatter("snake", |value, buf| match value {
+    template.add_formatter("snake", |value, buffer| match value {
         serde_json::Value::String(s) => {
-            *buf += &s.to_case(Case::Snake);
+            buffer.push_str(&s.to_case(Case::Snake));
             Ok(())
         }
         _ => Err(tinytemplate::error::Error::GenericError {
@@ -104,9 +104,9 @@ pub fn render(json: json::JsonValue, module_name: &str, evm_id: &str) -> Result<
         }),
     });
 
-    template.add_formatter("upper_snake", |value, buf| match value {
+    template.add_formatter("upper_snake", |value, buffer| match value {
         serde_json::Value::String(s) => {
-            *buf += &s.to_case(Case::UpperSnake);
+            buffer.push_str(&s.to_case(Case::UpperSnake));
             Ok(())
         }
         _ => Err(tinytemplate::error::Error::GenericError {
@@ -114,9 +114,9 @@ pub fn render(json: json::JsonValue, module_name: &str, evm_id: &str) -> Result<
         }),
     });
 
-    template.add_formatter("upper_camel", |value, buf| match value {
+    template.add_formatter("upper_camel", |value, buffer| match value {
         serde_json::Value::String(s) => {
-            *buf += &s.to_case(Case::UpperCamel);
+            buffer.push_str(&s.to_case(Case::UpperCamel));
             Ok(())
         }
         _ => Err(tinytemplate::error::Error::GenericError {
@@ -124,12 +124,12 @@ pub fn render(json: json::JsonValue, module_name: &str, evm_id: &str) -> Result<
         }),
     });
 
-    template.add_formatter("capitalize", |value, buf| match value {
+    template.add_formatter("capitalize", |value, buffer| match value {
         serde_json::Value::String(s) => {
             let (head, tail) = s.split_at(1);
 
-            *buf += &head.to_uppercase();
-            *buf += tail;
+            buffer.push_str(&head.to_uppercase());
+            buffer.push_str(tail);
 
             Ok(())
         }

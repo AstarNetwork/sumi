@@ -18,7 +18,6 @@ pub enum Error {
     Json(#[from] json::Error),
 
     #[error("template engine error")]
-    // #[error(transparent)]
     TemplateEngine(#[from] tinytemplate::error::Error),
 
     #[error("ethereum ABI error")]

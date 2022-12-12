@@ -1,6 +1,7 @@
 mod cli;
 mod error;
 mod template;
+mod ink;
 
 use clap::Parser;
 use error::Error;

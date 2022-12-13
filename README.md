@@ -10,7 +10,7 @@ Please note that Sumi is not a transpiler, it's a binding generator. If you need
 
 # Quick start guide
 
-1. Install Sumi using `cargo install --git https://github.com/0x7CFE/sumi`
+1. Install Sumi using `cargo install --git https://github.com/AstarNetwork/sumi`
 2. Use Solidity compiler (or [Remix IDE](https://remix.ethereum.org) if in doubt) to obtain smart contract metadata:  
 `solc --pretty-json --abi <input>.sol -o .`  
 Don't forget to replace `<input>.sol` with your actual file name.  

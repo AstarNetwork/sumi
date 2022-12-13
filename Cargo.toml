@@ -1,7 +1,9 @@
 [package]
 name = "sumi"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+authors = ["Stake Technologies <devops@stake.co.jp>"]
+description = "Astar binding generator for Solidity and ink!"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

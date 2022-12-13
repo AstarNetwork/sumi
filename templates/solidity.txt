@@ -1,19 +1,30 @@
 // compiler version must be greater than or equal to 0.8.13 and less than 0.9.0
 pragma solidity ^0.8.13;
 
-contract {{contract_name}} \{
+contract name \{
+    const XVM XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
+
     address ink_address;
 
     constructor (address _ink_address) \{
         ink_address = _ink_address;
     }
 
-    {{ for function in functions }}
-        {{ for line in function.docs }}
-        // {line}
+{{ for message in spec.messages }}
+    {{ for line in message.docs -}}
+    // {line}
+    {{ endfor -}}
+    function {message.label}(
+        {{- for arg in message.args }}
+        { arg.type.displayName | path } {arg.label-}
+        {{- if not @last }},{{ endif -}}
         {{ endfor }}
-        function {function.name}(TODO args) public \{
-
-        }
-    {{ endfor }}
+    ) public 
+    {{- if message.payable }} payable {{ endif }}
+    {{- if not message.mutates }} view {{ endif }}
+    {#- {- if message.returnType.type }#} returns { message.returnType.displayName | path } {#{ endif }#}
+    \{
+        // TODO XVM_PRECOMPILE.xvm_call({message.selector}, dest, input);
+    }
+{{ endfor }}
 }

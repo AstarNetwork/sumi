@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use ink_metadata::TypeSpec;
-use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
+use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef, TypeDefPrimitive, Registry, meta_type};
 
+#[derive(Debug)]
 struct TypeRegistry<'a> {
     mapping: HashMap<u32, SolidityType>,
     registry: &'a PortableRegistry,
@@ -64,7 +65,9 @@ impl<'a> TypeRegistry<'a> {
                 };
 
                 SolidityType {
+                    // Arrays are defined in place
                     definition: None,
+
                     reference: format!("{ty}[{size}]", size = array.len(), ty = reference),
                 }
             }
@@ -83,7 +86,7 @@ impl<'a> TypeRegistry<'a> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 struct SolidityType {
     /// How the type should be defined in the source. For example,
     /// for structs that would be `struct { ... }`. For primitives
@@ -155,6 +158,30 @@ impl AsSolidityType for TypeDef<PortableForm> {
             _ => todo!(),
         }
     }
+}
+
+#[test]
+fn type_conversion() {
+    let mut registry = Registry::new();
+    registry.register_type(&meta_type::<[u8; 20]>());
+
+    let portable_registry: PortableRegistry = registry.into();
+    let mut type_registry = TypeRegistry::new(&portable_registry);
+
+    for ink_type in portable_registry.types() {
+        let evm_type = type_registry.convert_type(ink_type.ty().type_def());
+        type_registry.insert(ink_type.id(), evm_type);
+    }
+
+    assert_eq!(type_registry.lookup(0), Some(&SolidityType {
+        definition: None,
+        reference: "uint8[20]".to_owned(),
+    }));
+
+    assert_eq!(type_registry.lookup(1), Some(&SolidityType {
+        definition: None,
+        reference: "uint8".to_owned(),
+    }));
 }
 
 #[test]

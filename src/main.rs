@@ -1,7 +1,7 @@
 mod cli;
 mod error;
-mod template;
-mod ink;
+mod sol2ink;
+mod ink2sol;
 
 use clap::Parser;
 use error::Error;
@@ -40,7 +40,7 @@ fn main() -> anyhow::Result<()> {
         json::parse(&buffer).map_err(Error::from)?
     };
 
-    let rendered = template::render(parsed_json, &args.module_name, &args.evm_id)?;
+    let rendered = sol2ink::render(parsed_json, &args.module_name, &args.evm_id)?;
     write!(writer, "{}\n", rendered)?;
 
     Ok(())

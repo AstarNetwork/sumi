@@ -10,13 +10,17 @@ contract name \{
         ink_address = _ink_address;
     }
 
+{{ for type in spec.types }}
+
+{{ endfor }}
+
 {{ for message in spec.messages }}
     {{ for line in message.docs -}}
     // {line}
     {{ endfor -}}
     function {message.label}(
         {{- for arg in message.args }}
-        { arg.type.displayName | path } {arg.label-}
+        { arg.type | debug } {arg.label-}
         {{- if not @last }},{{ endif -}}
         {{ endfor }}
     ) public 

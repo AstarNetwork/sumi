@@ -8,7 +8,7 @@ use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use tinytemplate::{format_unescaped, TinyTemplate};
 
-static MODULE_TEMPLATE: &'static str = include_str!("../templates/module.txt");
+static MODULE_TEMPLATE: &'static str = include_str!("../templates/ink-module.txt");
 
 #[derive(Serialize)]
 struct Input {

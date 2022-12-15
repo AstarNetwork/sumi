@@ -29,8 +29,9 @@ impl EvmTypeRegistry {
 
         for ink_type in registry.types() {
             if !instance.mapping.contains_key(&ink_type.id()) {
-                let evm_type = instance.convert_type(ink_type.ty().type_def(), registry);
-                instance.insert(ink_type.id(), evm_type);
+                if let Some(evm_type) = instance.convert_type(ink_type.ty().type_def(), registry) {
+                    instance.insert(ink_type.id(), evm_type);
+                }
             }
         }
 
@@ -61,27 +62,31 @@ impl EvmTypeRegistry {
     //         .reference;
     // }
 
-    fn convert_type(&mut self, ty: &TypeDef<PortableForm>, registry: &PortableRegistry) -> EvmType {
+    fn convert_type(
+        &mut self,
+        ty: &TypeDef<PortableForm>,
+        registry: &PortableRegistry,
+    ) -> Option<EvmType> {
         let mut lookup_reference_or_insert = |id| {
             if let Some(ty) = self.lookup(id) {
-                ty.reference.clone()
+                Some(ty.reference.clone())
             } else {
                 let ty = registry.resolve(id).expect("should exist");
-                let new_type = self.convert_type(ty.type_def(), registry);
+                let new_type = self.convert_type(ty.type_def(), registry)?;
                 let reference = new_type.reference.clone();
                 self.insert(id, new_type);
-                reference
+                Some(reference)
             }
         };
 
-        match ty {
+        Some(match ty {
             TypeDef::Primitive(primitive) => EvmType {
                 // Primivite types are trivial and do not need definition
                 definition: None,
 
                 reference: match primitive {
                     TypeDefPrimitive::Bool => "bool",
-                    TypeDefPrimitive::Char => todo!(), // ?
+                    TypeDefPrimitive::Char => return None, // todo!(), // ?
                     TypeDefPrimitive::Str => "string",
                     TypeDefPrimitive::U8 => "uint8",
                     TypeDefPrimitive::U16 => "uint16",
@@ -101,17 +106,7 @@ impl EvmTypeRegistry {
 
             TypeDef::Array(array) => {
                 let id = array.type_param().id();
-
-                // let reference = if let Some(ty) = self.lookup(id) {
-                //     ty.reference.clone()
-                // } else {
-                //     let ty = self.registry.resolve(id).expect("should exist");
-                //     let new_type = self.convert_type(ty.type_def());
-                //     let reference = new_type.reference.clone();
-                //     self.insert(id, new_type);
-                //     reference
-                // };
-                let reference = lookup_reference_or_insert(id);
+                let reference = lookup_reference_or_insert(id)?;
 
                 EvmType {
                     // Arrays are defined in place
@@ -127,11 +122,11 @@ impl EvmTypeRegistry {
                     .iter()
                     .any(|field| field.name().is_none());
 
-                todo!()
+                return None; // todo!()
             }
 
-            _ => todo!(),
-        }
+            _ => return None, // todo!(),
+        })
     }
 }
 
@@ -142,6 +137,7 @@ fn type_conversion() {}
 mod tests {
     use super::*;
     use scale_info::{meta_type, PortableRegistry, Registry};
+    use tinytemplate::error::Error::GenericError;
 
     #[test]
     fn type_registry() {
@@ -149,12 +145,7 @@ mod tests {
         let array_type_id = ink_registry.register_type(&meta_type::<[u8; 20]>()).id();
 
         let ink_registry: PortableRegistry = ink_registry.into();
-        let mut evm_registry = EvmTypeRegistry::new(&ink_registry);
-
-        // for ink_type in ink_registry.types() {
-        //     let evm_type = evm_registry.convert_type(ink_type.ty().type_def(), &ink_registry);
-        //     evm_registry.insert(ink_type.id(), evm_type);
-        // }
+        let evm_registry = EvmTypeRegistry::new(&ink_registry);
 
         assert_eq!(
             evm_registry.lookup(array_type_id),
@@ -214,12 +205,6 @@ mod tests {
 
         let evm_registry = EvmTypeRegistry::new(&project.registry());
 
-        // for ink_type in project.registry().types() {
-        //     let evm_type = evm_registry.convert_type(ink_type.ty().type_def());
-        //     evm_registry.insert(ink_type.id(), evm_type);
-        // }
-
-        // let evm_registry = &evm_registry;
         template.add_formatter("reference", move |value, buffer| {
             if let serde_json::Value::Number(id) = value {
                 let id = id
@@ -227,11 +212,19 @@ mod tests {
                     .and_then(|id| id.try_into().ok())
                     .expect("id should be valid");
 
-                evm_registry.lookup(id).expect("should exist");
-                buffer.push_str(&format!("{:?}", value));
+                let reference = &evm_registry
+                    .lookup(id)
+                    .ok_or_else(|| GenericError {
+                        msg: format!("unknown or unsupported type id {}", id),
+                    })?
+                    .reference;
+
+                buffer.push_str(&reference);
                 Ok(())
             } else {
-                return Err(tinytemplate::error::Error::GenericError { msg: "".to_owned() });
+                return Err(GenericError {
+                    msg: format!("invalid type id {:?}", value),
+                });
             }
         });
 

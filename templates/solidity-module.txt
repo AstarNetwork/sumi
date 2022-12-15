@@ -11,7 +11,7 @@ contract name \{
     }
 
 {{ for type in types }}
-    {type.id}
+    {#- type.id -#}
 {{ endfor }}
 
 {{ for message in spec.messages }}
@@ -20,7 +20,7 @@ contract name \{
     {{ endfor -}}
     function {message.label}(
         {{- for arg in message.args }}
-        { arg.type | debug } {arg.label-}
+        { arg.type.type | reference } {arg.label-}
         {{- if not @last }},{{ endif -}}
         {{ endfor }}
     ) public 

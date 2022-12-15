@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use scale_info::{form::PortableForm, PortableRegistry, TypeDef, TypeDefPrimitive};
 use std::collections::HashMap;
 
@@ -122,7 +123,22 @@ impl EvmTypeRegistry {
                     .iter()
                     .any(|field| field.name().is_none());
 
-                return None; // todo!()
+                EvmType {
+                    // Tuples are defined in place
+                    definition: None,
+
+                    reference: format!(
+                        "({})",
+                        composite
+                            .fields()
+                            .iter()
+                            .map(|field| {
+                                let id = field.ty().id();
+                                lookup_reference_or_insert(id).unwrap_or_default()
+                            })
+                            .join(",")
+                    ),
+                }
             }
 
             _ => return None, // todo!(),

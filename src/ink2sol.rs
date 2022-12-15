@@ -1,19 +1,40 @@
+use scale_info::{form::PortableForm, PortableRegistry, TypeDef, TypeDefPrimitive};
 use std::collections::HashMap;
 
-use scale_info::{form::PortableForm, PortableRegistry, TypeDef, TypeDefPrimitive};
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub struct EvmType {
+    /// How the type should be defined in the source. For example,
+    /// for structs that would be `struct { ... }`. For primitives
+    /// and tuples the definition is absent.
+    definition: Option<String>,
 
-#[derive(Debug)]
-pub struct EvmTypeRegistry<'a> {
-    mapping: HashMap<u32, EvmType>,
-    registry: &'a PortableRegistry,
+    /// How the type should be referred to in the source, for example
+    /// in function arguments list. Typically that would be just a
+    /// type name, but for tuples that would contain full definition.
+    reference: String,
 }
 
-impl<'a> EvmTypeRegistry<'a> {
-    fn new(registry: &'a PortableRegistry) -> Self {
-        Self {
+#[derive(Debug)]
+pub struct EvmTypeRegistry {
+    mapping: HashMap<u32, EvmType>,
+    // registry: &'a PortableRegistry,
+}
+
+impl EvmTypeRegistry {
+    fn new(registry: &PortableRegistry) -> Self {
+        let mut instance = Self {
             mapping: HashMap::new(),
-            registry,
+            // registry,
+        };
+
+        for ink_type in registry.types() {
+            if !instance.mapping.contains_key(&ink_type.id()) {
+                let evm_type = instance.convert_type(ink_type.ty().type_def(), registry);
+                instance.insert(ink_type.id(), evm_type);
+            }
         }
+
+        instance
     }
 
     fn lookup(&self, id: u32) -> Option<&EvmType> {
@@ -24,7 +45,35 @@ impl<'a> EvmTypeRegistry<'a> {
         self.mapping.insert(id, ty);
     }
 
-    fn convert_type(&mut self, ty: &TypeDef<PortableForm>) -> EvmType {
+    // fn lookup_reference_or_insert(&mut self, id: u32) -> &str {
+    //     if let Some(evm_type) = self.lookup(id) {
+    //         return &evm_type.reference;
+    //     }
+
+    //     let ty = self.registry.resolve(id).expect("should exist");
+    //     let new_type = self.convert_type(ty.type_def());
+
+    //     self.insert(id, new_type);
+
+    //     return &self
+    //         .lookup(id)
+    //         .expect("should be inserted by now")
+    //         .reference;
+    // }
+
+    fn convert_type(&mut self, ty: &TypeDef<PortableForm>, registry: &PortableRegistry) -> EvmType {
+        let mut lookup_reference_or_insert = |id| {
+            if let Some(ty) = self.lookup(id) {
+                ty.reference.clone()
+            } else {
+                let ty = registry.resolve(id).expect("should exist");
+                let new_type = self.convert_type(ty.type_def(), registry);
+                let reference = new_type.reference.clone();
+                self.insert(id, new_type);
+                reference
+            }
+        };
+
         match ty {
             TypeDef::Primitive(primitive) => EvmType {
                 // Primivite types are trivial and do not need definition
@@ -53,15 +102,16 @@ impl<'a> EvmTypeRegistry<'a> {
             TypeDef::Array(array) => {
                 let id = array.type_param().id();
 
-                let reference = if let Some(ty) = self.lookup(id) {
-                    ty.reference.clone()
-                } else {
-                    let ty = self.registry.resolve(id).expect("should exist");
-                    let new_type = self.convert_type(ty.type_def());
-                    let reference = new_type.reference.clone();
-                    self.insert(id, new_type);
-                    reference
-                };
+                // let reference = if let Some(ty) = self.lookup(id) {
+                //     ty.reference.clone()
+                // } else {
+                //     let ty = self.registry.resolve(id).expect("should exist");
+                //     let new_type = self.convert_type(ty.type_def());
+                //     let reference = new_type.reference.clone();
+                //     self.insert(id, new_type);
+                //     reference
+                // };
+                let reference = lookup_reference_or_insert(id);
 
                 EvmType {
                     // Arrays are defined in place
@@ -85,19 +135,6 @@ impl<'a> EvmTypeRegistry<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub struct EvmType {
-    /// How the type should be defined in the source. For example,
-    /// for structs that would be `struct { ... }`. For primitives
-    /// and tuples the definition is absent.
-    definition: Option<String>,
-
-    /// How the type should be referred to in the source, for example
-    /// in function arguments list. Typically that would be just a
-    /// type name, but for tuples that would contain full definition.
-    reference: String,
-}
-
 #[test]
 fn type_conversion() {}
 
@@ -114,10 +151,10 @@ mod tests {
         let ink_registry: PortableRegistry = ink_registry.into();
         let mut evm_registry = EvmTypeRegistry::new(&ink_registry);
 
-        for ink_type in ink_registry.types() {
-            let evm_type = evm_registry.convert_type(ink_type.ty().type_def());
-            evm_registry.insert(ink_type.id(), evm_type);
-        }
+        // for ink_type in ink_registry.types() {
+        //     let evm_type = evm_registry.convert_type(ink_type.ty().type_def(), &ink_registry);
+        //     evm_registry.insert(ink_type.id(), evm_type);
+        // }
 
         assert_eq!(
             evm_registry.lookup(array_type_id),
@@ -173,6 +210,29 @@ mod tests {
 
             buffer.push_str(&path);
             Ok(())
+        });
+
+        let evm_registry = EvmTypeRegistry::new(&project.registry());
+
+        // for ink_type in project.registry().types() {
+        //     let evm_type = evm_registry.convert_type(ink_type.ty().type_def());
+        //     evm_registry.insert(ink_type.id(), evm_type);
+        // }
+
+        // let evm_registry = &evm_registry;
+        template.add_formatter("reference", move |value, buffer| {
+            if let serde_json::Value::Number(id) = value {
+                let id = id
+                    .as_u64()
+                    .and_then(|id| id.try_into().ok())
+                    .expect("id should be valid");
+
+                evm_registry.lookup(id).expect("should exist");
+                buffer.push_str(&format!("{:?}", value));
+                Ok(())
+            } else {
+                return Err(tinytemplate::error::Error::GenericError { msg: "".to_owned() });
+            }
         });
 
         let rendered = template.render("module", &project).unwrap();

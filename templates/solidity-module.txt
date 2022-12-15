@@ -10,8 +10,8 @@ contract name \{
         ink_address = _ink_address;
     }
 
-{{ for type in spec.types }}
-
+{{ for type in types }}
+    {type.id}
 {{ endfor }}
 
 {{ for message in spec.messages }}

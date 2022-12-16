@@ -1,6 +1,6 @@
-struct {{ for segment in path }}{segment}{{ if not @last }}::{{ endif }}{{ endfor }} \{
-{{ for field in fields }}
-    {field.type} {field.name}
-    {{- if not @last }},{{ endif }}
-{{ endfor }}
-}
+    struct {{ for segment in path }}{segment}{{ if not @last }}_{{ endif }}{{ endfor }} \{
+    {{- for field in fields }}
+        {field.type} {field.name};
+    {{- endfor }}
+    }
+

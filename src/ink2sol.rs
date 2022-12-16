@@ -163,7 +163,7 @@ impl EvmTypeRegistry {
                     definition: Some(context.templates.render("struct", &st).unwrap()),
 
                     // TODO find a way to p
-                    reference: format!("Composite{id})"),
+                    reference: ty.path().segments().join("_"),
                 }
             }
 
@@ -245,8 +245,9 @@ mod tests {
             Ok(())
         });
 
-        let evm_registry = EvmTypeRegistry::new(&project.registry());
+        let registry = std::rc::Rc::new(EvmTypeRegistry::new(&project.registry()));
 
+        let evm_registry = registry.clone();
         template.add_formatter("reference", move |value, buffer| {
             if let serde_json::Value::Number(id) = value {
                 let id = id
@@ -262,6 +263,32 @@ mod tests {
                     .reference;
 
                 buffer.push_str(&reference);
+                Ok(())
+            } else {
+                return Err(GenericError {
+                    msg: format!("invalid type id {:?}", value),
+                });
+            }
+        });
+
+        let evm_registry = registry.clone();
+        template.add_formatter("definition", move |value, buffer| {
+            if let serde_json::Value::Number(id) = value {
+                let id = id
+                    .as_u64()
+                    .and_then(|id| id.try_into().ok())
+                    .expect("id should be valid");
+
+                if let Some(definition) = &evm_registry
+                    .lookup(id)
+                    .and_then(|ty| ty.definition.as_ref())
+                    // .ok_or_else(|| GenericError {
+                    //     msg: format!("unknown or unsupported type id {}", id),
+                    // })?
+                    // .definition
+                {
+                    buffer.push_str(&definition);
+                }
                 Ok(())
             } else {
                 return Err(GenericError {

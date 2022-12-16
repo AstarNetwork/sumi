@@ -2,17 +2,13 @@
 pragma solidity ^0.8.13;
 
 contract name \{
-    const XVM XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
+    // const XVM XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
 
     address ink_address;
 
     constructor (address _ink_address) \{
         ink_address = _ink_address;
     }
-
-{{ for type in types }}
-    { type.id | reference }
-{{ endfor }}
 
 {{ for message in spec.messages }}
     {{ for line in message.docs -}}
@@ -21,7 +17,7 @@ contract name \{
     function {message.label}(
         {{- for arg in message.args }}
         { arg.type.type | reference } {arg.label-}
-        {{- if not @last }},{{ endif }} // { arg.type.displayName | path -}
+        {{- if not @last }},{{ endif -}}
         {{ endfor }}
     ) public 
     {{- if message.payable }} payable {{ endif }}
@@ -31,4 +27,9 @@ contract name \{
         // TODO XVM_PRECOMPILE.xvm_call({message.selector}, dest, input);
     }
 {{ endfor }}
+
+{{ for type in types }}
+    // id {type.id | debug}
+{ type.id | definition }
+{{- endfor }}
 }

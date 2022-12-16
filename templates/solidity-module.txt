@@ -11,7 +11,7 @@ contract name \{
     }
 
 {{ for type in types }}
-    {#- type.id -#}
+    { type.id | reference }
 {{ endfor }}
 
 {{ for message in spec.messages }}
@@ -21,12 +21,12 @@ contract name \{
     function {message.label}(
         {{- for arg in message.args }}
         { arg.type.type | reference } {arg.label-}
-        {{- if not @last }},{{ endif -}}
+        {{- if not @last }},{{ endif }} // { arg.type.displayName | path -}
         {{ endfor }}
     ) public 
     {{- if message.payable }} payable {{ endif }}
     {{- if not message.mutates }} view {{ endif }}
-    {#- {- if message.returnType.type }#} returns { message.returnType.displayName | path } {#{ endif }#}
+    returns (bool) {# message.returnType.type | debug #}
     \{
         // TODO XVM_PRECOMPILE.xvm_call({message.selector}, dest, input);
     }

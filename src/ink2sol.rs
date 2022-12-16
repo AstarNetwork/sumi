@@ -1,6 +1,8 @@
 use itertools::Itertools;
-use scale_info::{form::PortableForm, PortableRegistry, TypeDef, TypeDefPrimitive};
+use scale_info::{form::PortableForm, Path, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
+use serde::Serialize;
 use std::collections::HashMap;
+use tinytemplate::TinyTemplate;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct EvmType {
@@ -21,16 +23,33 @@ pub struct EvmTypeRegistry {
     // registry: &'a PortableRegistry,
 }
 
+struct Context<'a, 'template> {
+    registry: &'a PortableRegistry,
+    templates: TinyTemplate<'template>,
+}
+
 impl EvmTypeRegistry {
     fn new(registry: &PortableRegistry) -> Self {
         let mut instance = Self {
             mapping: HashMap::new(),
-            // registry,
+        };
+
+        let mut templates = TinyTemplate::new();
+        templates.set_default_formatter(&tinytemplate::format_unescaped);
+        templates
+            .add_template("struct", include_str!("../templates/solidity-struct.txt"))
+            .unwrap();
+
+        let context = Context {
+            registry,
+            templates,
         };
 
         for ink_type in registry.types() {
             if !instance.mapping.contains_key(&ink_type.id()) {
-                if let Some(evm_type) = instance.convert_type(ink_type.ty().type_def(), registry) {
+                if let Some(evm_type) =
+                    instance.convert_type(ink_type.id(), ink_type.ty(), &context)
+                {
                     instance.insert(ink_type.id(), evm_type);
                 }
             }
@@ -47,40 +66,25 @@ impl EvmTypeRegistry {
         self.mapping.insert(id, ty);
     }
 
-    // fn lookup_reference_or_insert(&mut self, id: u32) -> &str {
-    //     if let Some(evm_type) = self.lookup(id) {
-    //         return &evm_type.reference;
-    //     }
-
-    //     let ty = self.registry.resolve(id).expect("should exist");
-    //     let new_type = self.convert_type(ty.type_def());
-
-    //     self.insert(id, new_type);
-
-    //     return &self
-    //         .lookup(id)
-    //         .expect("should be inserted by now")
-    //         .reference;
-    // }
-
     fn convert_type(
         &mut self,
-        ty: &TypeDef<PortableForm>,
-        registry: &PortableRegistry,
+        id: u32,
+        ty: &Type<PortableForm>,
+        context: &Context,
     ) -> Option<EvmType> {
         let mut lookup_reference_or_insert = |id| {
             if let Some(ty) = self.lookup(id) {
                 Some(ty.reference.clone())
             } else {
-                let ty = registry.resolve(id).expect("should exist");
-                let new_type = self.convert_type(ty.type_def(), registry)?;
+                let ty = context.registry.resolve(id).expect("should exist");
+                let new_type = self.convert_type(id, ty, context)?;
                 let reference = new_type.reference.clone();
                 self.insert(id, new_type);
                 Some(reference)
             }
         };
 
-        Some(match ty {
+        Some(match ty.type_def() {
             TypeDef::Primitive(primitive) => EvmType {
                 // Primivite types are trivial and do not need definition
                 definition: None,
@@ -118,26 +122,48 @@ impl EvmTypeRegistry {
             }
 
             TypeDef::Composite(composite) => {
-                let is_tuple = composite
+                #[derive(Serialize)]
+                struct Struct {
+                    path: Path<PortableForm>,
+                    fields: Vec<Field>,
+                }
+
+                #[derive(Serialize)]
+                struct Field {
+                    name: String,
+                    #[serde(rename = "type")]
+                    ty: String,
+                }
+
+                let fields = composite
                     .fields()
                     .iter()
-                    .any(|field| field.name().is_none());
+                    .enumerate()
+                    .map(|(index, field)| {
+                        let id = field.ty().id();
+
+                        Field {
+                            name: field
+                                .name()
+                                .cloned()
+                                .unwrap_or_else(|| format!("f{}", index)),
+                            ty: lookup_reference_or_insert(id).unwrap_or_default(),
+                        }
+                    })
+                    .collect_vec();
+
+                let st = Struct {
+                    path: ty.path().clone(),
+                    fields,
+                };
 
                 EvmType {
-                    // Tuples are defined in place
-                    definition: None,
+                    // Tuples are not first class citizens of Solidity.
+                    // Hence, we are forced to define them as structs.
+                    definition: Some(context.templates.render("struct", &st).unwrap()),
 
-                    reference: format!(
-                        "({})",
-                        composite
-                            .fields()
-                            .iter()
-                            .map(|field| {
-                                let id = field.ty().id();
-                                lookup_reference_or_insert(id).unwrap_or_default()
-                            })
-                            .join(",")
-                    ),
+                    // TODO find a way to p
+                    reference: format!("Composite{id})"),
                 }
             }
 

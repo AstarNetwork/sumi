@@ -140,8 +140,8 @@ impl EvmTypeRegistry {
 
             TypeDef::Composite(composite) => {
                 #[derive(Serialize)]
-                struct Struct {
-                    path: Path<PortableForm>,
+                struct Struct<'a> {
+                    path: &'a Path<PortableForm>,
                     fields: Vec<Field>,
                 }
 
@@ -170,7 +170,7 @@ impl EvmTypeRegistry {
                     .collect_vec();
 
                 let st = Struct {
-                    path: ty.path().clone(),
+                    path: ty.path(),
                     fields,
                 };
 

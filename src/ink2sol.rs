@@ -179,7 +179,8 @@ impl EvmTypeRegistry {
                     // Hence, we are forced to define them as structs.
                     definition: Some(context.templates.render("struct", &st).unwrap()),
 
-                    // TODO find a way to p
+                    // Structures should be referred using `memory` specifier
+                    reference: ty.path().segments().join("_") + " memory",
                 }
             }
 

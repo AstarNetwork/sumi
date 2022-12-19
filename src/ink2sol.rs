@@ -28,6 +28,18 @@ struct Context<'a, 'template> {
     templates: TinyTemplate<'template>,
 }
 
+fn format_path(value: &serde_json::Value, buffer: &mut String) -> tinytemplate::error::Result<()> {
+    let path: String = value
+        .as_array()
+        .expect("not an array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .join("_");
+
+    buffer.push_str(&path);
+    Ok(())
+}
+
 impl EvmTypeRegistry {
     fn new(registry: &PortableRegistry) -> Self {
         let mut instance = Self {
@@ -39,6 +51,11 @@ impl EvmTypeRegistry {
         templates
             .add_template("struct", include_str!("../templates/solidity-struct.txt"))
             .unwrap();
+        templates
+            .add_template("enum", include_str!("../templates/solidity-enum.txt"))
+            .unwrap();
+
+        templates.add_formatter("path", format_path);
 
         let context = Context {
             registry,
@@ -163,6 +180,14 @@ impl EvmTypeRegistry {
                     definition: Some(context.templates.render("struct", &st).unwrap()),
 
                     // TODO find a way to p
+                }
+            }
+
+            TypeDef::Variant(_) => {
+                // Algebraic enums would require complex discriminant and substructure handling :(
+                // Currently we just encode them as C-style POD enums omitting fields
+                EvmType {
+                    definition: Some(context.templates.render("enum", &ty).unwrap()),
                     reference: ty.path().segments().join("_"),
                 }
             }
@@ -233,17 +258,7 @@ mod tests {
             Ok(())
         });
 
-        template.add_formatter("path", |value, buffer| {
-            let path: String = value
-                .as_array()
-                .expect("not an array")
-                .iter()
-                .filter_map(|v| v.as_str())
-                .join("::");
-
-            buffer.push_str(&path);
-            Ok(())
-        });
+        template.add_formatter("path", format_path);
 
         let registry = std::rc::Rc::new(EvmTypeRegistry::new(&project.registry()));
 
@@ -282,10 +297,10 @@ mod tests {
                 if let Some(definition) = &evm_registry
                     .lookup(id)
                     .and_then(|ty| ty.definition.as_ref())
-                    // .ok_or_else(|| GenericError {
-                    //     msg: format!("unknown or unsupported type id {}", id),
-                    // })?
-                    // .definition
+                // .ok_or_else(|| GenericError {
+                //     msg: format!("unknown or unsupported type id {}", id),
+                // })?
+                // .definition
                 {
                     buffer.push_str(&definition);
                 }

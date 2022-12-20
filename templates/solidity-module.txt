@@ -22,7 +22,7 @@ contract name \{
     ) public 
     {{- if message.payable }} payable {{ endif }}
     {{- if not message.mutates }} view {{ endif }}
-    returns (bool) {# message.returnType.type | debug #}
+    returns ({ message.returnType.type | reference })
     \{
         // TODO XVM_PRECOMPILE.xvm_call({message.selector}, dest, input);
     }

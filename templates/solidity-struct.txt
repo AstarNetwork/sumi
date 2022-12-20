@@ -1,4 +1,4 @@
-    struct {{ for segment in path }}{segment}{{ if not @last }}_{{ endif }}{{ endfor }} \{
+    struct {path | path} \{
     {{- for field in fields }}
         {field.type} {field.name};
     {{- endfor }}

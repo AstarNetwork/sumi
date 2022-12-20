@@ -101,6 +101,40 @@ impl EvmTypeRegistry {
             }
         };
 
+        #[derive(Serialize)]
+        struct Struct {
+            path: Path<PortableForm>,
+            fields: Vec<Field>,
+        }
+
+        #[derive(Serialize)]
+        struct Field {
+            name: String,
+            #[serde(rename = "type")]
+            ty: String,
+        }
+
+        let mut fields_to_struct =
+            |path: Path<PortableForm>,
+             fields: Box<dyn Iterator<Item = scale_info::Field<PortableForm>>>| {
+                let fields = fields
+                    .enumerate()
+                    .map(|(index, field)| {
+                        let id = field.ty().id();
+
+                        Field {
+                            name: field
+                                .name()
+                                .cloned()
+                                .unwrap_or_else(|| format!("f{}", index)),
+                            ty: lookup_reference_or_insert(id).unwrap_or_default(),
+                        }
+                    })
+                    .collect_vec();
+
+                Struct { path, fields }
+            };
+
         Some(match ty.type_def() {
             TypeDef::Primitive(primitive) => EvmType {
                 // Primivite types are trivial and do not need definition
@@ -139,40 +173,33 @@ impl EvmTypeRegistry {
             }
 
             TypeDef::Composite(composite) => {
-                #[derive(Serialize)]
-                struct Struct<'a> {
-                    path: &'a Path<PortableForm>,
-                    fields: Vec<Field>,
+                let st = fields_to_struct(
+                    ty.path().clone(),
+                    Box::new(composite.fields().iter().cloned()),
+                );
+
+                EvmType {
+                    // Tuples are not first class citizens of Solidity.
+                    // Hence, we are forced to define them as structs.
+                    definition: Some(context.templates.render("struct", &st).unwrap()),
+
+                    // Structures should be referred using `memory` specifier
+                    reference: ty.path().segments().join("_") + " memory",
                 }
+            }
 
-                #[derive(Serialize)]
-                struct Field {
-                    name: String,
-                    #[serde(rename = "type")]
-                    ty: String,
-                }
-
-                let fields = composite
-                    .fields()
-                    .iter()
-                    .enumerate()
-                    .map(|(index, field)| {
-                        let id = field.ty().id();
-
-                        Field {
-                            name: field
-                                .name()
-                                .cloned()
-                                .unwrap_or_else(|| format!("f{}", index)),
-                            ty: lookup_reference_or_insert(id).unwrap_or_default(),
-                        }
-                    })
-                    .collect_vec();
-
-                let st = Struct {
-                    path: ty.path(),
-                    fields,
-                };
+            TypeDef::Tuple(tuple) => {
+                let st = fields_to_struct(
+                    ty.path().clone(),
+                    Box::new(tuple.fields().iter().map(|id| {
+                        scale_info::Field::<PortableForm>::new(
+                            None,
+                            *id,
+                            None,
+                            vec![],
+                        )
+                    })),
+                );
 
                 EvmType {
                     // Tuples are not first class citizens of Solidity.
@@ -186,7 +213,7 @@ impl EvmTypeRegistry {
 
             TypeDef::Variant(_) => {
                 // Algebraic enums would require complex discriminant and substructure handling :(
-                // Currently we just encode them as C-style POD enums omitting fields
+                // Currently we just encode them as C-style POD enums completely omitting fields
                 EvmType {
                     definition: Some(context.templates.render("enum", &ty).unwrap()),
                     reference: ty.path().segments().join("_"),

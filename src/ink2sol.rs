@@ -163,12 +163,21 @@ impl EvmTypeRegistry {
             TypeDef::Array(array) => {
                 let id = array.type_param().id();
                 let reference = lookup_reference_or_insert(id)?;
+                let size = array.len();
 
-                EvmType {
-                    // Arrays are defined in place
-                    definition: None,
-
-                    reference: format!("{ty}[{size}]", size = array.len(), ty = reference),
+                // Special handling of byte arrays
+                if reference == "uint8" && size <= 32 {
+                    EvmType {
+                        definition: None, // Arrays are defined in place
+                        encoder: None,
+                        reference: format!("bytes{size}"),
+                    }
+                } else {
+                    EvmType {
+                        definition: None, // Arrays are defined in place
+                        encoder: None,
+                        reference: format!("{reference}[{size}]"),
+                    }
                 }
             }
 

@@ -1,5 +1,5 @@
     enum {path | path} \{
     {{- for variant in def.variant.variants }}
-        {variant.name} = {variant.index};
+        {variant.name}{{ if not @last }},{{ endif }} // = {variant.index}
     {{- endfor }}
     }

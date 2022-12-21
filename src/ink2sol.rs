@@ -211,7 +211,18 @@ impl EvmTypeRegistry {
                 }
             }
 
-            TypeDef::Variant(_) => {
+            TypeDef::Variant(variant) => {
+                let default_indices = variant
+                    .variants()
+                    .iter()
+                    .enumerate()
+                    .all(|(index, variant)| index == variant.index() as usize);
+
+                // Solidity does not support non-default variant discriminants :(
+                if !default_indices {
+                    return None; // TODO report error
+                }
+
                 // Algebraic enums would require complex discriminant and substructure handling :(
                 // Currently we just encode them as C-style POD enums completely omitting fields
                 EvmType {

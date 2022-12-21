@@ -1,0 +1,8 @@
+    function encode_{path | path}({path | path} memory value) private pure returns (bytes memory) \{
+        return abi.encodePacked(
+            {{- for field in fields }}
+            value.{field.name}
+            {{- if not @last }},{{ endif }}
+            {{- endfor }}
+        );
+    }

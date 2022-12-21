@@ -15,6 +15,11 @@ pub struct EvmType {
     /// in function arguments list. Typically that would be just a
     /// type name, but for tuples that would contain full definition.
     reference: String,
+
+    modifier: Option<String>,
+
+    /// How the type should be encoded to Scale format
+    encoder: Option<String>,
 }
 
 #[derive(Debug)]
@@ -53,6 +58,9 @@ impl EvmTypeRegistry {
             .unwrap();
         templates
             .add_template("enum", include_str!("../templates/solidity-enum.txt"))
+            .unwrap();
+        templates
+            .add_template("encoder", include_str!("../templates/solidity-encoder.txt"))
             .unwrap();
 
         templates.add_formatter("path", format_path);
@@ -137,9 +145,6 @@ impl EvmTypeRegistry {
 
         Some(match ty.type_def() {
             TypeDef::Primitive(primitive) => EvmType {
-                // Primivite types are trivial and do not need definition
-                definition: None,
-
                 reference: match primitive {
                     TypeDefPrimitive::Bool => "bool",
                     TypeDefPrimitive::Char => return None, // todo!(), // ?
@@ -158,6 +163,7 @@ impl EvmTypeRegistry {
                     TypeDefPrimitive::I256 => "int256",
                 }
                 .to_owned(),
+                ..EvmType::default()
             },
 
             TypeDef::Array(array) => {
@@ -168,15 +174,13 @@ impl EvmTypeRegistry {
                 // Special handling of byte arrays
                 if reference == "uint8" && size <= 32 {
                     EvmType {
-                        definition: None, // Arrays are defined in place
-                        encoder: None,
                         reference: format!("bytes{size}"),
+                        ..EvmType::default()
                     }
                 } else {
                     EvmType {
-                        definition: None, // Arrays are defined in place
-                        encoder: None,
                         reference: format!("{reference}[{size}]"),
+                        ..EvmType::default()
                     }
                 }
             }
@@ -192,23 +196,25 @@ impl EvmTypeRegistry {
                     // Hence, we are forced to define them as structs.
                     definition: Some(context.templates.render("struct", &st).unwrap()),
 
-                    // Structures should be referred using `memory` specifier
-                    reference: ty.path().segments().join("_") + " memory",
+                    reference: ty.path().segments().join("_"),
+
+                    // Structures should be declared using `memory` specifier
+                    modifier: Some("memory".to_owned()),
+
+                    encoder: Some(context.templates.render("encoder", &st).unwrap()),
+
+                    ..EvmType::default()
                 }
             }
 
             TypeDef::Tuple(tuple) => {
-                let st = fields_to_struct(
-                    ty.path().clone(),
-                    Box::new(tuple.fields().iter().map(|id| {
-                        scale_info::Field::<PortableForm>::new(
-                            None,
-                            *id,
-                            None,
-                            vec![],
-                        )
-                    })),
-                );
+                let st =
+                    fields_to_struct(
+                        ty.path().clone(),
+                        Box::new(tuple.fields().iter().map(|id| {
+                            scale_info::Field::<PortableForm>::new(None, *id, None, vec![])
+                        })),
+                    );
 
                 EvmType {
                     // Tuples are not first class citizens of Solidity.
@@ -217,6 +223,8 @@ impl EvmTypeRegistry {
 
                     // Structures should be referred using `memory` specifier
                     reference: ty.path().segments().join("_") + " memory",
+
+                    ..EvmType::default()
                 }
             }
 
@@ -237,6 +245,7 @@ impl EvmTypeRegistry {
                 EvmType {
                     definition: Some(context.templates.render("enum", &ty).unwrap()),
                     reference: ty.path().segments().join("_"),
+                    ..EvmType::default()
                 }
             }
 
@@ -250,6 +259,8 @@ fn type_conversion() {}
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     use super::*;
     use scale_info::{meta_type, PortableRegistry, Registry};
     use tinytemplate::error::Error::GenericError;
@@ -265,18 +276,25 @@ mod tests {
         assert_eq!(
             evm_registry.lookup(array_type_id),
             Some(&EvmType {
-                definition: None,
                 reference: "uint8[20]".to_owned(),
+                ..EvmType::default()
             })
         );
 
         assert_eq!(
             evm_registry.lookup(1),
             Some(&EvmType {
-                definition: None,
                 reference: "uint8".to_owned(),
+                ..EvmType::default()
             })
         );
+    }
+
+    #[test]
+    fn encode() {
+        use parity_scale_codec::Encode;
+        dbg!([(1u8, 2u8), (3u8, 4u8)].encode().bytes());
+        dbg!(vec![1u8, 2, 3, 4, 5].encode().bytes());
     }
 
     #[test]
@@ -326,6 +344,56 @@ mod tests {
                     .reference;
 
                 buffer.push_str(&reference);
+                Ok(())
+            } else {
+                return Err(GenericError {
+                    msg: format!("invalid type id {:?}", value),
+                });
+            }
+        });
+
+        let evm_registry = registry.clone();
+        template.add_formatter("modifier", move |value, buffer| {
+            if let serde_json::Value::Number(id) = value {
+                let id = id
+                    .as_u64()
+                    .and_then(|id| id.try_into().ok())
+                    .expect("id should be valid");
+
+                let modifier = &evm_registry
+                    .lookup(id)
+                    .ok_or_else(|| GenericError {
+                        msg: format!("unknown or unsupported type id {}", id),
+                    })?
+                    .modifier
+                    .as_ref();
+
+                buffer.push_str(&modifier.unwrap_or(&String::default()));
+                Ok(())
+            } else {
+                return Err(GenericError {
+                    msg: format!("invalid type id {:?}", value),
+                });
+            }
+        });
+
+        let evm_registry = registry.clone();
+        template.add_formatter("encoder", move |value, buffer| {
+            if let serde_json::Value::Number(id) = value {
+                let id = id
+                    .as_u64()
+                    .and_then(|id| id.try_into().ok())
+                    .expect("id should be valid");
+
+                let modifier = &evm_registry
+                    .lookup(id)
+                    .ok_or_else(|| GenericError {
+                        msg: format!("unknown or unsupported type id {}", id),
+                    })?
+                    .encoder
+                    .as_ref();
+
+                buffer.push_str(&modifier.unwrap_or(&String::default()));
                 Ok(())
             } else {
                 return Err(GenericError {

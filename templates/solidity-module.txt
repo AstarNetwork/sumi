@@ -1,8 +1,16 @@
 // compiler version must be greater than or equal to 0.8.13 and less than 0.9.0
 pragma solidity ^0.8.13;
 
+interface XVM \{
+    function xvm_call(
+        bytes calldata context,
+        bytes calldata to,
+        bytes calldata input
+    ) external;
+}
+
 contract name \{
-    // const XVM XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
+    XVM constant XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
 
     address ink_address;
 
@@ -16,7 +24,7 @@ contract name \{
     {{ endfor -}}
     function {message.label}(
         {{- for arg in message.args }}
-        { arg.type.type | reference } {arg.label-}
+        { arg.type.type | reference } { arg.type.type | modifier } {arg.label-}
         {{- if not @last }},{{ endif -}}
         {{ endfor }}
     ) public 
@@ -24,12 +32,29 @@ contract name \{
     {{- if not message.mutates }} view {{ endif }}
     returns ({ message.returnType.type | reference })
     \{
-        // TODO XVM_PRECOMPILE.xvm_call({message.selector}, dest, input);
+        bytes4 selector = {message.selector};
+        bytes memory contract_address; // TODO
+        bytes memory buffer = bytes.concat(
+            selector
+            {{- for arg in message.args -}}
+            ,
+            encode_{arg.type.type | reference}({arg.label})
+            {{- endfor }}
+        );
+
+        XVM_PRECOMPILE.xvm_call("\x1f\x00", contract_address, buffer);
+        return Result.Ok;
     }
 {{ endfor }}
 
 {{ for type in types }}
     // id {type.id | debug}
 { type.id | definition }
+{ type.id | encoder }
 {{- endfor }}
+
+    function encode_uint128(uint128 value) private pure returns (bytes memory) \{
+        return abi.encodePacked(value);
+    }
+
 }

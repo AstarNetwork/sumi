@@ -683,6 +683,7 @@ dependencies = [
  "ink_metadata",
  "itertools",
  "json",
+ "parity-scale-codec",
  "scale-info",
  "serde",
  "serde_json",

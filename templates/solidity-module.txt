@@ -24,13 +24,13 @@ contract name \{
     {{ endfor -}}
     function {message.label}(
         {{- for arg in message.args }}
-        { arg.type.type | reference } { arg.type.type | modifier } {arg.label-}
+        { arg.type.type | type reference } { arg.type.type | type modifier } {arg.label-}
         {{- if not @last }},{{ endif -}}
         {{ endfor }}
     ) public 
     {{- if message.payable }} payable {{ endif }}
     {{- if not message.mutates }} view {{ endif }}
-    returns ({ message.returnType.type | reference })
+    returns ({ message.returnType.type | type reference })
     \{
         bytes4 selector = {message.selector};
         bytes memory contract_address; // TODO
@@ -38,7 +38,7 @@ contract name \{
             selector
             {{- for arg in message.args -}}
             ,
-            encode_{arg.type.type | reference}({arg.label})
+            encode_{arg.type.type | type reference}({arg.label})
             {{- endfor }}
         );
 
@@ -49,8 +49,8 @@ contract name \{
 
 {{ for type in types }}
     // id {type.id | debug}
-{ type.id | definition }
-{ type.id | encoder }
+{ type.id | type definition }
+{ type.id | type encoder }
 {{- endfor }}
 
     function encode_uint128(uint128 value) private pure returns (bytes memory) \{

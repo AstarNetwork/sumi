@@ -326,100 +326,25 @@ mod tests {
 
         template.add_formatter("path", format_path);
 
-        let registry = std::rc::Rc::new(EvmTypeRegistry::new(&project.registry()));
-
-        let evm_registry = registry.clone();
-        template.add_formatter("reference", move |value, buffer| {
+        let evm_registry = EvmTypeRegistry::new(&project.registry());
+        template.add_formatter_with_args("type", move |value, arg, buffer| {
             if let serde_json::Value::Number(id) = value {
                 let id = id
                     .as_u64()
                     .and_then(|id| id.try_into().ok())
                     .expect("id should be valid");
 
-                let reference = &evm_registry
-                    .lookup(id)
-                    .ok_or_else(|| GenericError {
-                        msg: format!("unknown or unsupported type id {}", id),
-                    })?
-                    .reference;
+                let evm_type = evm_registry.lookup(id).expect("failed to lookup id {id}");
 
-                buffer.push_str(&reference);
-                Ok(())
-            } else {
-                return Err(GenericError {
-                    msg: format!("invalid type id {:?}", value),
+                let empty = String::default();
+                buffer.push_str(match arg {
+                    Some("reference") => evm_type.reference.as_ref(),
+                    Some("definition") => evm_type.definition.as_ref().unwrap_or(&empty),
+                    Some("modifier") => evm_type.modifier.as_ref().unwrap_or(&empty),
+                    Some("encoder") => evm_type.encoder.as_ref().unwrap_or(&empty),
+                    _ => panic!("type formatter must come with an argument"),
                 });
-            }
-        });
 
-        let evm_registry = registry.clone();
-        template.add_formatter("modifier", move |value, buffer| {
-            if let serde_json::Value::Number(id) = value {
-                let id = id
-                    .as_u64()
-                    .and_then(|id| id.try_into().ok())
-                    .expect("id should be valid");
-
-                let modifier = &evm_registry
-                    .lookup(id)
-                    .ok_or_else(|| GenericError {
-                        msg: format!("unknown or unsupported type id {}", id),
-                    })?
-                    .modifier
-                    .as_ref();
-
-                buffer.push_str(&modifier.unwrap_or(&String::default()));
-                Ok(())
-            } else {
-                return Err(GenericError {
-                    msg: format!("invalid type id {:?}", value),
-                });
-            }
-        });
-
-        let evm_registry = registry.clone();
-        template.add_formatter("encoder", move |value, buffer| {
-            if let serde_json::Value::Number(id) = value {
-                let id = id
-                    .as_u64()
-                    .and_then(|id| id.try_into().ok())
-                    .expect("id should be valid");
-
-                let modifier = &evm_registry
-                    .lookup(id)
-                    .ok_or_else(|| GenericError {
-                        msg: format!("unknown or unsupported type id {}", id),
-                    })?
-                    .encoder
-                    .as_ref();
-
-                buffer.push_str(&modifier.unwrap_or(&String::default()));
-                Ok(())
-            } else {
-                return Err(GenericError {
-                    msg: format!("invalid type id {:?}", value),
-                });
-            }
-        });
-
-        let evm_registry = registry.clone();
-        template.add_formatter("definition", move |value, buffer| {
-            if let serde_json::Value::Number(id) = value {
-                let id = id
-                    .as_u64()
-                    .and_then(|id| id.try_into().ok())
-                    .expect("id should be valid");
-
-                if let Some(definition) = &evm_registry
-                    .lookup(id)
-                    .and_then(|ty| ty.definition.as_ref())
-                // .ok_or_else(|| GenericError {
-                //     msg: format!("unknown or unsupported type id {}", id),
-                // })?
-                // .definition
-                {
-                    buffer.push_str(&definition);
-                }
                 Ok(())
             } else {
                 return Err(GenericError {

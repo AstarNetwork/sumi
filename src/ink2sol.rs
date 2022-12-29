@@ -1,7 +1,8 @@
+use ink_metadata::InkProject;
 use itertools::Itertools;
 use scale_info::{form::PortableForm, Path, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 use tinytemplate::TinyTemplate;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -20,6 +21,8 @@ pub struct EvmType {
 
     /// How the type should be encoded to Scale format
     encoder: Option<String>,
+
+    was_referred: bool,
 }
 
 #[derive(Debug)]
@@ -28,9 +31,30 @@ pub struct EvmTypeRegistry {
     // registry: &'a PortableRegistry,
 }
 
-struct Context<'a, 'template> {
-    registry: &'a PortableRegistry,
+struct Context<'template> {
+    // registry: &'a PortableRegistry,
+    project: Rc<InkProject>,
     templates: TinyTemplate<'template>,
+}
+
+impl<'template> Context<'template> {
+    fn new(project: Rc<InkProject>) -> Self {
+        let mut templates = TinyTemplate::new();
+        templates.set_default_formatter(&tinytemplate::format_unescaped);
+        templates
+            .add_template("struct", include_str!("../templates/solidity-struct.txt"))
+            .unwrap();
+        templates
+            .add_template("enum", include_str!("../templates/solidity-enum.txt"))
+            .unwrap();
+        templates
+            .add_template("encoder", include_str!("../templates/solidity-encoder.txt"))
+            .unwrap();
+
+        templates.add_formatter("path", format_path);
+
+        Context { project, templates }
+    }
 }
 
 fn format_path(value: &serde_json::Value, buffer: &mut String) -> tinytemplate::error::Result<()> {
@@ -51,34 +75,16 @@ impl EvmTypeRegistry {
             mapping: HashMap::new(),
         };
 
-        let mut templates = TinyTemplate::new();
-        templates.set_default_formatter(&tinytemplate::format_unescaped);
-        templates
-            .add_template("struct", include_str!("../templates/solidity-struct.txt"))
-            .unwrap();
-        templates
-            .add_template("enum", include_str!("../templates/solidity-enum.txt"))
-            .unwrap();
-        templates
-            .add_template("encoder", include_str!("../templates/solidity-encoder.txt"))
-            .unwrap();
-
-        templates.add_formatter("path", format_path);
-
-        let context = Context {
-            registry,
-            templates,
-        };
-
-        for ink_type in registry.types() {
-            if !instance.mapping.contains_key(&ink_type.id()) {
-                if let Some(evm_type) =
-                    instance.convert_type(ink_type.id(), ink_type.ty(), &context)
-                {
-                    instance.insert(ink_type.id(), evm_type);
-                }
-            }
-        }
+        // let
+        // for ink_type in registry.types() {
+        //     if !instance.mapping.contains_key(&ink_type.id()) {
+        //         if let Some(evm_type) =
+        //             instance.convert_type(ink_type.id(), ink_type.ty(), &context)
+        //         {
+        //             instance.insert(ink_type.id(), evm_type);
+        //         }
+        //     }
+        // }
 
         instance
     }
@@ -87,7 +93,12 @@ impl EvmTypeRegistry {
         self.mapping.get(&id)
     }
 
+    fn lookup_mut(&mut self, id: u32) -> Option<&mut EvmType> {
+        self.mapping.get_mut(&id)
+    }
+
     fn insert<'r, 'm>(&mut self, id: u32, ty: EvmType) {
+        println!("inserted id {}", id);
         self.mapping.insert(id, ty);
     }
 
@@ -101,7 +112,11 @@ impl EvmTypeRegistry {
             if let Some(ty) = self.lookup(id) {
                 Some(ty.reference.clone())
             } else {
-                let ty = context.registry.resolve(id).expect("should exist");
+                let ty = context
+                    .project
+                    .registry()
+                    .resolve(id)
+                    .expect("should exist");
                 let new_type = self.convert_type(id, ty, context)?;
                 let reference = new_type.reference.clone();
                 self.insert(id, new_type);
@@ -259,10 +274,11 @@ fn type_conversion() {}
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
+    use std::{cell::RefCell, io::Read, rc::Rc};
 
     use super::*;
     use scale_info::{meta_type, PortableRegistry, Registry};
+    use serde_json::value;
     use tinytemplate::error::Error::GenericError;
 
     #[test]
@@ -311,7 +327,8 @@ mod tests {
         file.read_to_string(&mut buffer).unwrap();
 
         let metadata: serde_json::Value = serde_json::from_str(&buffer).unwrap();
-        let project: InkProject = serde_json::from_value(metadata["V3"].clone()).unwrap();
+        let project: Rc<InkProject> =
+            Rc::new(serde_json::from_value(metadata["V3"].clone()).unwrap());
 
         static MODULE_TEMPLATE: &'static str = include_str!("../templates/solidity-module.txt");
         let mut template = tinytemplate::TinyTemplate::new();
@@ -326,7 +343,19 @@ mod tests {
 
         template.add_formatter("path", format_path);
 
-        let evm_registry = EvmTypeRegistry::new(&project.registry());
+        let evm_registry = Rc::new(RefCell::new(EvmTypeRegistry::new(&project.registry())));
+        let context = Context::new(project.clone());
+
+        let registry = evm_registry.clone();
+        template.add_predicate("mapped", move |id| {
+            let id = id
+                .as_u64()
+                .and_then(|id| id.try_into().ok())
+                .expect("id should be valid");
+
+            Ok(registry.borrow().lookup(id).is_some())
+        });
+
         template.add_formatter_with_args("type", move |value, arg, buffer| {
             if let serde_json::Value::Number(id) = value {
                 let id = id
@@ -334,16 +363,35 @@ mod tests {
                     .and_then(|id| id.try_into().ok())
                     .expect("id should be valid");
 
-                let evm_type = evm_registry.lookup(id).expect("failed to lookup id {id}");
+                let write_buffer = |ty: &mut EvmType, buffer: &mut String| {
+                    let empty = String::default();
+                    buffer.push_str(match arg {
+                        Some("reference") => {
+                            ty.was_referred = true;
+                            ty.reference.as_ref()
+                        }
 
-                let empty = String::default();
-                buffer.push_str(match arg {
-                    Some("reference") => evm_type.reference.as_ref(),
-                    Some("definition") => evm_type.definition.as_ref().unwrap_or(&empty),
-                    Some("modifier") => evm_type.modifier.as_ref().unwrap_or(&empty),
-                    Some("encoder") => evm_type.encoder.as_ref().unwrap_or(&empty),
-                    _ => panic!("type formatter must come with an argument"),
-                });
+                        Some("definition") => ty.definition.as_ref().unwrap_or(&empty),
+                        Some("modifier") => ty.modifier.as_ref().unwrap_or(&empty),
+                        Some("encoder") => ty.encoder.as_ref().unwrap_or(&empty),
+                        _ => panic!("type formatter must come with an argument"),
+                    });
+                };
+
+                let mut registry = evm_registry.borrow_mut();
+                match registry.lookup_mut(id) {
+                    Some(ty) => write_buffer(ty, buffer),
+                    None => {
+                        let ty = context
+                            .project
+                            .registry()
+                            .resolve(id)
+                            .expect("should exist");
+                        let mut new_type = registry.convert_type(id, ty, &context).unwrap();
+                        write_buffer(&mut new_type, buffer);
+                        registry.insert(id, new_type);
+                    }
+                }
 
                 Ok(())
             } else {
@@ -353,7 +401,7 @@ mod tests {
             }
         });
 
-        let rendered = template.render("module", &project).unwrap();
+        let rendered = template.render("module", &*project).unwrap();
         println!("{}", rendered);
     }
 }

@@ -808,7 +808,7 @@ dependencies = [
 [[package]]
 name = "tinytemplate"
 version = "1.2.1"
-source = "git+https://github.com/0x7CFE/TinyTemplate?branch=format-args#09ace40c0872fb80c93ae7525954cb74a69b7fc7"
+source = "git+https://github.com/0x7CFE/TinyTemplate?branch=format-args#402f95fc3138fd49492044897f37dcaaeddf73c0"
 dependencies = [
  "serde",
  "serde_json",

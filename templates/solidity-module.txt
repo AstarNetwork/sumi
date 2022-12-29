@@ -19,6 +19,7 @@ contract name \{
     }
 
 {{ for message in spec.messages }}
+{{- if message.mutates }} {# handling only non-view methods for now #}
     {{ for line in message.docs -}}
     // {line}
     {{ endfor -}}
@@ -33,7 +34,7 @@ contract name \{
     returns ({ message.returnType.type | type reference })
     \{
         bytes4 selector = {message.selector};
-        bytes memory contract_address; // TODO
+        bytes memory contract_address = abi.encodePacked(ink_address);
         bytes memory buffer = bytes.concat(
             selector
             {{- for arg in message.args -}}
@@ -45,12 +46,15 @@ contract name \{
         XVM_PRECOMPILE.xvm_call("\x1f\x00", contract_address, buffer);
         return Result.Ok;
     }
+{{ endif }}
 {{ endfor }}
 
 {{ for type in types }}
-    // id {type.id | debug}
+{{- if type.id mapped }}
+    // mapped id {type.id | debug} -> {type.id | type reference}
 { type.id | type definition }
 { type.id | type encoder }
+{{- endif }}
 {{- endfor }}
 
     function encode_uint128(uint128 value) private pure returns (bytes memory) \{

@@ -14,6 +14,9 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+
     #[error("unable to parse input JSON")]
     Json(#[from] json::Error),
 

@@ -1,6 +1,12 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum Mode {
+    EvmToInk,
+    InkToEvm,
+}
+
 #[derive(Parser, Debug)]
 pub struct Args {
     /// Input filename or stdin if empty
@@ -12,10 +18,13 @@ pub struct Args {
     pub output: Option<PathBuf>,
 
     /// Ink module name to generate
-    #[arg(long, short)]
-    pub module_name: String,
+    #[arg(long)]
+    pub module_name: Option<String>,
 
     /// EVM ID to use in module
     #[arg(long, short, default_value = "0x0F")]
     pub evm_id: String,
+
+    #[arg(long, short, default_value = "evm-to-ink")]
+    pub mode: Mode,
 }

@@ -1,7 +1,7 @@
 mod cli;
 mod error;
-mod sol2ink;
 mod ink2sol;
+mod sol2ink;
 
 use clap::Parser;
 use error::Error;
@@ -33,14 +33,23 @@ fn main() -> anyhow::Result<()> {
         None => Box::new(BufWriter::new(io::stdout())),
     };
 
-    let parsed_json = {
-        let mut buffer = String::new();
-        reader.read_to_string(&mut buffer)?;
+    let rendered = match args.mode {
+        cli::Mode::EvmToInk => {
+            let parsed_json = {
+                let mut buffer = String::new();
+                reader.read_to_string(&mut buffer)?;
 
-        json::parse(&buffer).map_err(Error::from)?
+                json::parse(&buffer).map_err(Error::from)?
+            };
+
+            sol2ink::render(parsed_json, &args.module_name.unwrap(), &args.evm_id)?
+        }
+
+        cli::Mode::InkToEvm => {
+            ink2sol::render(&mut reader)?
+        },
     };
 
-    let rendered = sol2ink::render(parsed_json, &args.module_name, &args.evm_id)?;
     write!(writer, "{}\n", rendered)?;
 
     Ok(())

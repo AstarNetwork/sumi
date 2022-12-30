@@ -21,18 +21,14 @@ pub struct EvmType {
 
     /// How the type should be encoded to Scale format
     encoder: Option<String>,
-
-    was_referred: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct EvmTypeRegistry {
     mapping: HashMap<u32, EvmType>,
-    // registry: &'a PortableRegistry,
 }
 
 struct Context<'template> {
-    // registry: &'a PortableRegistry,
     project: Rc<InkProject>,
     templates: TinyTemplate<'template>,
 }
@@ -71,22 +67,7 @@ fn format_path(value: &serde_json::Value, buffer: &mut String) -> tinytemplate::
 
 impl EvmTypeRegistry {
     fn new(registry: &PortableRegistry) -> Self {
-        let mut instance = Self {
-            mapping: HashMap::new(),
-        };
-
-        // let
-        // for ink_type in registry.types() {
-        //     if !instance.mapping.contains_key(&ink_type.id()) {
-        //         if let Some(evm_type) =
-        //             instance.convert_type(ink_type.id(), ink_type.ty(), &context)
-        //         {
-        //             instance.insert(ink_type.id(), evm_type);
-        //         }
-        //     }
-        // }
-
-        instance
+        Self::default()
     }
 
     fn lookup(&self, id: u32) -> Option<&EvmType> {
@@ -162,7 +143,7 @@ impl EvmTypeRegistry {
             TypeDef::Primitive(primitive) => EvmType {
                 reference: match primitive {
                     TypeDefPrimitive::Bool => "bool",
-                    TypeDefPrimitive::Char => return None, // todo!(), // ?
+                    TypeDefPrimitive::Char => return None, // TODO
                     TypeDefPrimitive::Str => "string",
                     TypeDefPrimitive::U8 => "uint8",
                     TypeDefPrimitive::U16 => "uint16",
@@ -278,7 +259,6 @@ mod tests {
 
     use super::*;
     use scale_info::{meta_type, PortableRegistry, Registry};
-    use serde_json::value;
     use tinytemplate::error::Error::GenericError;
 
     #[test]
@@ -351,7 +331,9 @@ mod tests {
             let id = id
                 .as_u64()
                 .and_then(|id| id.try_into().ok())
-                .expect("id should be valid");
+                .ok_or_else(|| GenericError {
+                    msg: format!("invalid id {id:?}"),
+                })?;
 
             Ok(registry.borrow().lookup(id).is_some())
         });
@@ -361,16 +343,14 @@ mod tests {
                 let id = id
                     .as_u64()
                     .and_then(|id| id.try_into().ok())
-                    .expect("id should be valid");
+                    .ok_or_else(|| GenericError {
+                        msg: format!("invalid id {id:?}"),
+                    })?;
 
-                let write_buffer = |ty: &mut EvmType, buffer: &mut String| {
+                let write_buffer = |ty: &EvmType, buffer: &mut String| {
                     let empty = String::default();
                     buffer.push_str(match arg {
-                        Some("reference") => {
-                            ty.was_referred = true;
-                            ty.reference.as_ref()
-                        }
-
+                        Some("reference") => ty.reference.as_ref(),
                         Some("definition") => ty.definition.as_ref().unwrap_or(&empty),
                         Some("modifier") => ty.modifier.as_ref().unwrap_or(&empty),
                         Some("encoder") => ty.encoder.as_ref().unwrap_or(&empty),
@@ -382,11 +362,14 @@ mod tests {
                 match registry.lookup_mut(id) {
                     Some(ty) => write_buffer(ty, buffer),
                     None => {
-                        let ty = context
-                            .project
-                            .registry()
-                            .resolve(id)
-                            .expect("should exist");
+                        let ty =
+                            context
+                                .project
+                                .registry()
+                                .resolve(id)
+                                .ok_or_else(|| GenericError {
+                                    msg: format!("invalid id {id:?}"),
+                                })?;
                         let mut new_type = registry.convert_type(id, ty, &context).unwrap();
                         write_buffer(&mut new_type, buffer);
                         registry.insert(id, new_type);

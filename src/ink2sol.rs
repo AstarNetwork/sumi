@@ -358,7 +358,7 @@ fn type_conversion() {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scale_info::{meta_type, PortableRegistry, Registry};
+    // use scale_info::{meta_type, PortableRegistry, Registry};
 
     /* #[test]
     fn type_registry() {

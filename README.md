@@ -1,6 +1,6 @@
 <p align="center"><img src="media/sumi.png"/><br/></p>
 
-Sumi is a binding generator specifically designed for [Astar Network](https://astar.network) ecosystem with XVM in mind. It takes EVM metadata and converts it to an ink! module that can later be used to call into original EVM smart contract.
+Sumi is a binding generator specifically designed for [Astar Network](https://astar.network) ecosystem with XVM in mind. It takes EVM metadata and converts it to an ink! module that can later be used to call into original EVM smart contract. Reverse ink! to EVM mode is also supported but is highly experimental and should be considered as a PoC for now.
 
 Please note that Sumi is not a transpiler, it's a binding generator. If you need to convert your existing Solidity smart contract to ink! please use [Sol2ink](https://github.com/Supercolony-net/sol2ink) instead.
 
@@ -10,7 +10,7 @@ Please note that Sumi is not a transpiler, it's a binding generator. If you need
 
 # Quick start guide
 
-1. Install Sumi using `cargo install --git https://github.com/AstarNetwork/sumi --tag v0.1.1`
+1. Install Sumi using `cargo install --git https://github.com/AstarNetwork/sumi --tag v0.2.0`
 2. Use Solidity compiler (or [Remix IDE](https://remix.ethereum.org) if in doubt) to obtain smart contract metadata:  
 `solc --pretty-json --abi <input>.sol -o .`  
 Don't forget to replace `<input>.sol` with your actual file name.  
@@ -24,14 +24,15 @@ Sumi can also work in pipeline mode. By default it will read from stdin and writ
 
 # Command line reference
 
-    Usage: sumi [OPTIONS] --module-name <MODULE_NAME>
-    
+    Usage: sumi [OPTIONS]
+
     Options:
-      -i, --input <INPUT>              Input filename or stdin if empty
-      -o, --output <OUTPUT>            Output filename or stdout if empty
-      -m, --module-name <MODULE_NAME>  Ink module name to generate
-      -e, --evm-id <EVM_ID>            EVM ID to use in module [default: 0x0F]
-      -h, --help                       Print help information
+    -i, --input <INPUT>              Input filename or stdin if empty
+    -o, --output <OUTPUT>            Output filename or stdout if empty
+        --module-name <MODULE_NAME>  Ink module name to generate
+    -e, --evm-id <EVM_ID>            EVM ID to use in module [default: 0x0F]
+    -m, --mode <MODE>                [default: evm-to-ink] [possible values: evm-to-ink, ink-to-evm]
+    -h, --help                       Print help information
 
 You can always use `sumi --help` to get the same reference.
 

@@ -18,7 +18,6 @@ contract {module_name} \{
         ink_address = _ink_address;
     }
 
-{# { with V3 } #}
 {{ for message in project.spec.messages }}
 {{- if message.mutates }} {# handling only non-view methods for now #}
     {{ for line in message.docs -}}
@@ -57,7 +56,6 @@ contract {module_name} \{
 { type.id | type encoder }
 {{- endif }}
 {{- endfor }}
-{# { endwith } #}
 
     function encode_uint128(uint128 value) private pure returns (bytes memory) \{
         return abi.encodePacked(value);

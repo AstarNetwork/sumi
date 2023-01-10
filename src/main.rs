@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         cli::Mode::InkToEvm => {
-            ink2sol::render(&mut reader)?
+            ink2sol::render(&mut reader, &args.module_name)?
         },
     };
 

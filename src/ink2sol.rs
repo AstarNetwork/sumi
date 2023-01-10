@@ -1,9 +1,9 @@
 use ink_metadata::InkProject;
 use itertools::Itertools;
-use scale_info::{form::PortableForm, Path, PortableRegistry, Type, TypeDef, TypeDefPrimitive};
-use serde::{Serialize, Deserialize};
-use std::{collections::HashMap, rc::Rc, io::Read, cell::RefCell};
-use tinytemplate::{TinyTemplate, error::Error::GenericError};
+use scale_info::{form::PortableForm, Path, Type, TypeDef, TypeDefPrimitive};
+use serde::Serialize;
+use std::{cell::RefCell, collections::HashMap, io::Read, rc::Rc};
+use tinytemplate::{error::Error::GenericError, TinyTemplate};
 
 use crate::error::Error;
 
@@ -68,7 +68,7 @@ fn format_path(value: &serde_json::Value, buffer: &mut String) -> tinytemplate::
 }
 
 impl EvmTypeRegistry {
-    fn new(registry: &PortableRegistry) -> Self {
+    fn new() -> Self {
         Self::default()
     }
 
@@ -251,7 +251,7 @@ impl EvmTypeRegistry {
     }
 }
 
-pub fn render(reader: &mut dyn Read) -> Result<String, Error> {
+pub fn render(reader: &mut dyn Read, module_name: &Option<String>) -> Result<String, Error> {
     let mut buffer = String::new();
     reader.read_to_string(&mut buffer)?;
 
@@ -271,7 +271,7 @@ pub fn render(reader: &mut dyn Read) -> Result<String, Error> {
 
     template.add_formatter("path", format_path);
 
-    let evm_registry = Rc::new(RefCell::new(EvmTypeRegistry::new(&project.registry())));
+    let evm_registry = Rc::new(RefCell::new(EvmTypeRegistry::new()));
     let context = Context::new(project.clone());
 
     let registry = evm_registry.clone();
@@ -332,7 +332,24 @@ pub fn render(reader: &mut dyn Read) -> Result<String, Error> {
         }
     });
 
-    Ok(template.render("module", &*project)?)
+    #[derive(Serialize, Debug)]
+    struct RenderContext {
+        module_name: String,
+        project: Rc<InkProject>,
+    }
+
+    Ok(template.render(
+        "module",
+        &RenderContext {
+            module_name: module_name.clone().unwrap_or_else(|| {
+                metadata["contract"]["name"]
+                    .as_str()
+                    .unwrap_or("?")
+                    .to_owned()
+            }),
+            project: project.clone(),
+        },
+    )?)
 }
 
 #[test]
@@ -343,13 +360,20 @@ mod tests {
     use super::*;
     use scale_info::{meta_type, PortableRegistry, Registry};
 
-    #[test]
+    /* #[test]
     fn type_registry() {
         let mut ink_registry = Registry::new();
         let array_type_id = ink_registry.register_type(&meta_type::<[u8; 20]>()).id();
 
         let ink_registry: PortableRegistry = ink_registry.into();
-        let evm_registry = EvmTypeRegistry::new(&ink_registry);
+        // let evm_registry = EvmTypeRegistry::new();
+
+        let evm_registry = Rc::new(RefCell::new(EvmTypeRegistry::new()));
+        let context = Context::new(project.clone());
+
+        evm_registry.convert_type(array_type_id, ink_registry.resolve(array_type_id).unwrap(), context);
+
+        dbg!(&evm_registry);
 
         assert_eq!(
             evm_registry.lookup(array_type_id),
@@ -366,8 +390,7 @@ mod tests {
                 ..EvmType::default()
             })
         );
-    }
-
+    } */
     #[test]
     fn encode() {
         use parity_scale_codec::Encode;

@@ -9,7 +9,7 @@ interface XVM \{
     ) external;
 }
 
-contract name \{
+contract {module_name} \{
     XVM constant XVM_PRECOMPILE = XVM(0x0000000000000000000000000000000000005005);
 
     address ink_address;
@@ -18,7 +18,8 @@ contract name \{
         ink_address = _ink_address;
     }
 
-{{ for message in spec.messages }}
+{# { with V3 } #}
+{{ for message in project.spec.messages }}
 {{- if message.mutates }} {# handling only non-view methods for now #}
     {{ for line in message.docs -}}
     // {line}
@@ -49,13 +50,14 @@ contract name \{
 {{ endif }}
 {{ endfor }}
 
-{{ for type in types }}
+{{ for type in project.types }}
 {{- if type.id mapped }}
     // mapped id {type.id | debug} -> {type.id | type reference}
 { type.id | type definition }
 { type.id | type encoder }
 {{- endif }}
 {{- endfor }}
+{# { endwith } #}
 
     function encode_uint128(uint128 value) private pure returns (bytes memory) \{
         return abi.encodePacked(value);

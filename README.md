@@ -2,7 +2,7 @@
 
 Sumi is a binding generator specifically designed for [Astar Network](https://astar.network) ecosystem with XVM in mind. It takes EVM metadata and converts it to an ink! module that can later be used to call into original EVM smart contract. Reverse ink! to EVM mode is also supported but is highly experimental and should be considered as a PoC for now.
 
-Please note that Sumi is not a transpiler, it's a binding generator. If you need to convert your existing Solidity smart contract to ink! please use [Sol2ink](https://github.com/Supercolony-net/sol2ink) instead.
+Please note that Sumi is not a transpiler, it's a binding generator. If you need to convert your existing Solidity smart contract to ink! please use [Sol2ink](https://github.com/Supercolony-net/sol2ink) or the [solang compiler](https://github.com/hyperledger/solang) instead.
 
 # Why Sumi?
 
